@@ -16,10 +16,27 @@ async function main(): Promise<void> {
   loading.textContent = 'Genererer ø…';
   ui.appendChild(loading);
 
-  const game = await Game.create(canvas, { seed, debug });
+  const count = (key: string, fallback: number, max: number) => {
+    const n = Number.parseInt(params.get(key) ?? '', 10);
+    return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : fallback;
+  };
+  const teams = count('teams', debug ? 0 : 2, 4);
+  const wormsPerTeam = count('worms', 3, 4);
+
+  const game = await Game.create(canvas, { seed, debug, teams, wormsPerTeam });
   loading.remove();
   createDebugOverlay(game, ui, debug);
+  if (!debug) showControlsHint(ui);
   if (debug) installTestApi(game);
+}
+
+function showControlsHint(ui: HTMLElement): void {
+  const el = document.createElement('div');
+  el.id = 'controls-hint';
+  el.innerHTML =
+    '<b>WASD</b> gå · <b>Space</b> hop (2× = backflip) · <b>Mus</b> kig (klik for at låse) · ' +
+    '<b>Højreklik</b> sigt · <b>Tab</b> oversigt · <b>N</b> næste orm';
+  ui.appendChild(el);
 }
 
 main().catch((err: unknown) => {
