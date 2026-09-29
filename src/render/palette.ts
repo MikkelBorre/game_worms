@@ -4,39 +4,143 @@
  * Tweak here – sky.ts and water.ts both read from this file so fog/horizon/water stay in sync.
  */
 
-/** Unit-ish direction pointing TOWARDS the sun (normalised where used). Afternoon sun from the north-west. */
-export const SUN_DIRECTION: readonly [number, number, number] = [-0.55, 0.6, -0.4];
+/** Available look-dev lighting presets (cosmetic only). */
+export type LightingPresetName = 'goldenHour' | 'day';
 
-export const SKY = {
-  zenith: 0x2a7fe0,
-  mid: 0x6cb8f0,
-  /** Horizon = fog colour. Must stay identical so the ocean edge melts into the sky. */
-  horizon: 0xc4e6f2,
-  sunColor: 0xfff1d6,
-  sunGlow: 0xffe2a8,
-  cloud: 0xffffff,
-  cloudShade: 0xc9d8ea,
-} as const;
+/** Switch the whole look here. 'goldenHour' is the default art direction (docs/ART_DIRECTION.md). */
+export const LIGHTING_PRESET: LightingPresetName = 'goldenHour';
+
+interface LightingPreset {
+  /** Direction pointing TOWARDS the sun (normalised where used). */
+  sunDirection: readonly [number, number, number];
+  sky: {
+    zenith: number;
+    mid: number;
+    /** Horizon = fog colour. Must stay identical so the ocean edge melts into the sky. */
+    horizon: number;
+    sunColor: number;
+    sunGlow: number;
+    /** Sun disc angular size: cos of the disc edge (smaller = bigger disc). */
+    sunDiscCos: number;
+    cloud: number;
+    cloudShade: number;
+    /** Bright rim on cloud edges that face the sun. */
+    cloudRim: number;
+    /** Cloud coverage threshold on the fbm (lower = more cloud). */
+    cloudCover: number;
+  };
+  /**
+   * Directional haze: fog and horizon shift towards `color` when looking towards the sun
+   * (weight = strength · max(dot(view, sun), 0)^exponent). Shared by the sky dome and every lit material.
+   */
+  haze: { color: number; strength: number; exponent: number };
+  fog: { near: number; far: number };
+  light: {
+    sunColor: number;
+    sunIntensity: number;
+    hemiSky: number;
+    hemiGround: number;
+    hemiIntensity: number;
+    /**
+     * Toon ramp for the sun, 16 texels over dot(N, L) ∈ [-1, 1] (0.125 per texel; index 8 = dot 0..0.125).
+     * Values 0–255. A low sun needs the bright bands to start at small dot values.
+     */
+    toonRamp: readonly number[];
+  };
+  /** Water glint: broad sun path strength / tightness and sparkle strength. */
+  glint: { path: number; pathPower: number; sparkle: number };
+}
+
+const toSun = (azimuthDeg: number, elevationDeg: number): [number, number, number] => {
+  // Azimuth 0 = −Z (north, "into the default overview"), positive towards −X (west).
+  const a = (azimuthDeg * Math.PI) / 180;
+  const e = (elevationDeg * Math.PI) / 180;
+  return [-Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
+};
+
+const PRESETS: Record<LightingPresetName, LightingPreset> = {
+  goldenHour: {
+    // Low sun in front of the default overview camera (which looks towards −Z), a bit to the west:
+    // the sun path lies across the sea beside the island, slopes get warm side light.
+    sunDirection: toSun(40, 23),
+    sky: {
+      zenith: 0x2f6fd0,
+      mid: 0x78b4ec,
+      horizon: 0xf6cfae,
+      sunColor: 0xfff2c4,
+      sunGlow: 0xffb45a,
+      sunDiscCos: 0.99905,
+      cloud: 0xfff0dc,
+      cloudShade: 0xcdbfdc,
+      cloudRim: 0xffd79a,
+      cloudCover: 0.6,
+    },
+    haze: { color: 0xffc27a, strength: 0.85, exponent: 3.0 },
+    fog: { near: 150, far: 760 },
+    light: {
+      sunColor: 0xffc890,
+      sunIntensity: 2.9,
+      hemiSky: 0x9db4ff,
+      hemiGround: 0xa07a5a,
+      hemiIntensity: 3.5,
+      toonRamp: [0, 0, 0, 0, 0, 0, 0, 0, 165, 215, 245, 255, 255, 255, 255, 255],
+    },
+    glint: { path: 0.9, pathPower: 10, sparkle: 1.2 },
+  },
+  day: {
+    sunDirection: [-0.55, 0.6, -0.4],
+    sky: {
+      zenith: 0x2a7fe0,
+      mid: 0x6cb8f0,
+      horizon: 0xc4e6f2,
+      sunColor: 0xfff1d6,
+      sunGlow: 0xffe2a8,
+      sunDiscCos: 0.99935,
+      cloud: 0xffffff,
+      cloudShade: 0xc9d8ea,
+      cloudRim: 0xffffff,
+      cloudCover: 0.585,
+    },
+    haze: { color: 0xe6f0f0, strength: 0.25, exponent: 4.0 },
+    fog: { near: 170, far: 780 },
+    light: {
+      sunColor: 0xfff0d8,
+      sunIntensity: 2.5,
+      hemiSky: 0xcfe8ff,
+      hemiGround: 0x8a7a58,
+      hemiIntensity: 2.3,
+      toonRamp: [0, 0, 0, 0, 0, 0, 0, 0, 150, 150, 215, 215, 255, 255, 255, 255],
+    },
+    glint: { path: 0.22, pathPower: 24, sparkle: 0.75 },
+  },
+};
+
+const P = PRESETS[LIGHTING_PRESET];
+
+/** Unit-ish direction pointing TOWARDS the sun (normalised where used). */
+export const SUN_DIRECTION: readonly [number, number, number] = P.sunDirection;
+
+export const SKY = P.sky;
+
+export const HAZE = P.haze;
 
 export const FOG = {
   color: SKY.horizon,
   /** Linear fog start/end in metres (view depth). The island is 160 m across. */
-  near: 170,
-  far: 780,
+  near: P.fog.near,
+  far: P.fog.far,
 } as const;
 
 export const LIGHT = {
-  sunColor: 0xfff0d8,
-  sunIntensity: 2.5,
-  hemiSky: 0xcfe8ff,
-  hemiGround: 0x8a7a58,
-  hemiIntensity: 2.3,
+  ...P.light,
   /** Shadow map edge in texels (budget cap 2048). */
   shadowMapSize: 2048,
   shadowBias: -0.0003,
   shadowNormalBias: 0.12,
   shadowRadius: 1.5,
 } as const;
+
+export const GLINT = P.glint;
 
 export const WATER = {
   shallow: 0x46e6d0,
