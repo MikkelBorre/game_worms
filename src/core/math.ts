@@ -1,4 +1,6 @@
 export type Vec3 = [number, number, number];
+/** Horizontal (XZ) vector: [x, z]. */
+export type Vec2 = [number, number];
 
 export const vec3 = (x = 0, y = 0, z = 0): Vec3 => [x, y, z];
 
