@@ -59,3 +59,42 @@ export const WATER = {
   specular: 1.4,
   fresnel: 0.55,
 } as const;
+
+/** Team colours (helmets, active-worm marker, later HUD). Index = WormState.team % length. */
+export const TEAM_COLORS: readonly number[] = [
+  0xe8302a, // red
+  0x2a6cf0, // blue
+  0x2cc14a, // green
+  0xf7c21b, // yellow
+];
+
+export const teamColor = (team: number): number =>
+  TEAM_COLORS[((team % TEAM_COLORS.length) + TEAM_COLORS.length) % TEAM_COLORS.length] ?? 0xffffff;
+
+/** Procedural worm look (wormModel.ts). */
+export const WORM_COLORS = {
+  skin: 0xff7d9c,
+  /** Lighter front/belly. */
+  belly: 0xffb0c0,
+  /** Darker ring bands on the lower body (segments). */
+  segment: 0xd9587a,
+  eyeWhite: 0xffffff,
+  pupil: 0x141018,
+  mouth: 0x7a1f35,
+  /** Helmet brim/rim = team colour multiplied by this. */
+  helmetRimShade: 0.72,
+  /** Cartoon outline (inverted hull). */
+  outline: 0x2a1420,
+} as const;
+
+export const GRAVE_COLORS = {
+  stone: 0xb9c0c8,
+  stoneDark: 0x8e97a3,
+  engraving: 0x5a6270,
+  dirt: 0x7a5534,
+} as const;
+
+export const SPLASH_COLORS = {
+  droplet: 0xe4f8ff,
+  ring: 0xffffff,
+} as const;
