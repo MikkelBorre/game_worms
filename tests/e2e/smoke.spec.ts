@@ -55,3 +55,11 @@ test('no __game without ?debug=1', async ({ page }) => {
   await page.waitForTimeout(1500);
   expect(await page.evaluate(() => typeof window.__game)).toBe('undefined');
 });
+
+test('seed 0 is a valid seed and builds an island', async ({ page }) => {
+  const errors = await openGame(page, 0);
+  const s = await page.evaluate(() => window.__game!.state());
+  expect(s.seed).toBe(0);
+  expect(s.terrain.nonEmptyChunks).toBeGreaterThan(50);
+  expect(errors).toEqual([]);
+});

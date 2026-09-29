@@ -2,11 +2,12 @@ import './style.css';
 import { Game } from './game';
 import { createDebugOverlay } from './debug/overlay';
 import { installTestApi } from './debug/testApi';
+import { parseSeed } from './core/seed';
 
 async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const debug = params.get('debug') === '1';
-  const seed = Number.parseInt(params.get('seed') ?? '1234', 10) || 1234;
+  const seed = parseSeed(params.get('seed'));
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const ui = document.getElementById('ui') as HTMLElement;
