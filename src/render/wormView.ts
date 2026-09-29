@@ -238,7 +238,9 @@ export class WormView {
       case 'landed':
         if (!v) return;
         v.landedEvent = true;
-        v.kick(clamp(WORM_ANIM.landImpulseBase + WORM_ANIM.landImpulsePerM * e.drop, 0, WORM_ANIM.landImpulseMax));
+        v.kick(
+          clamp(WORM_ANIM.landImpulseBase + WORM_ANIM.landImpulsePerM * e.drop, 0, WORM_ANIM.landImpulseMax),
+        );
         if (e.drop > 3) v.squint = 0.35;
         return;
       case 'jumped':
@@ -431,13 +433,21 @@ export class WormView {
     const sway = A.idleSway * idleAmp;
     const hurtShake = v.hurt > 0 ? Math.sin(v.hurt * 60) * v.hurt * 0.5 : 0;
     v.hurt = Math.max(0, v.hurt - dt);
-    b[BONE.base]!.rotation.set(v.lean * 0.6, 0, wb * Math.sin(ph) + fb * Math.sin(fp) + sway * Math.sin(v.time * 0.9));
+    b[BONE.base]!.rotation.set(
+      v.lean * 0.6,
+      0,
+      wb * Math.sin(ph) + fb * Math.sin(fp) + sway * Math.sin(v.time * 0.9),
+    );
     b[BONE.mid]!.rotation.set(
       v.lean * 0.3,
       0,
       wb * 0.9 * Math.sin(ph - 1.1) + fb * Math.sin(fp - 1.3) + sway * 0.6 * Math.sin(v.time * 1.1 + 1),
     );
-    b[BONE.upper]!.rotation.set(v.lean * 0.2, 0, wb * 0.8 * Math.sin(ph - 2.2) + fb * 0.8 * Math.sin(fp - 2.6));
+    b[BONE.upper]!.rotation.set(
+      v.lean * 0.2,
+      0,
+      wb * 0.8 * Math.sin(ph - 2.2) + fb * 0.8 * Math.sin(fp - 2.6),
+    );
     // Head: counter-bend to stay roughly level, idle glances, hurt shake.
     v.headLook += (v.headLookTarget - v.headLook) * damp(4, dt);
     b[BONE.head]!.rotation.set(
@@ -447,7 +457,9 @@ export class WormView {
     );
     b[BONE.tail]!.rotation.set(
       -0.12 * v.flailAmp * Math.sin(fp * 0.7),
-      A.walkTail * v.walkAmp * Math.sin(ph + Math.PI) + 0.14 * idleAmp * Math.sin(v.time * 1.3) + fb * 1.5 * Math.sin(fp),
+      A.walkTail * v.walkAmp * Math.sin(ph + Math.PI) +
+        0.14 * idleAmp * Math.sin(v.time * 1.3) +
+        fb * 1.5 * Math.sin(fp),
       0,
     );
 

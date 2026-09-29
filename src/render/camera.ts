@@ -406,7 +406,8 @@ export function createCameraRig(
       const hit = opts.raycast(rayO, rayD, dist + CAMERA.collisionMargin);
       if (hit !== null) allowed = Math.max(CAMERA.collisionMinDist, hit - CAMERA.collisionMargin);
     }
-    if (collDist < 0 || cut || allowed < collDist) collDist = allowed; // pull in instantly
+    if (collDist < 0 || cut || allowed < collDist)
+      collDist = allowed; // pull in instantly
     else collDist += (allowed - collDist) * damp(CAMERA.collisionRelax, dt); // ease back out
 
     if (aim) look.addScaledVector(right, shoulder);

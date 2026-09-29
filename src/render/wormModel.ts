@@ -221,14 +221,17 @@ function addBody(b: GeoBuilder): void {
     Bv.set(0, T.z, -T.y); // T × X, perpendicular to T in the YZ plane
     const [b0, b1, w1] = spineWeights(u);
     const band = 0.5 + 0.5 * Math.cos((arc / M.segmentPeriod) * Math.PI * 2);
-    const bandW = Math.pow(band, 6) * M.segmentStrength * (1 - smoothstep(M.segmentMaxY - 0.08, M.segmentMaxY, P.y));
+    const bandW =
+      Math.pow(band, 6) * M.segmentStrength * (1 - smoothstep(M.segmentMaxY - 0.08, M.segmentMaxY, P.y));
     for (let j = 0; j <= radial; j++) {
       const th = (j / radial) * Math.PI * 2;
       R.copy(X).multiplyScalar(Math.cos(th)).addScaledVector(Bv, Math.sin(th));
       V.copy(P).addScaledVector(R, r);
       N.copy(R).addScaledVector(T, -slope).normalize();
       const front = smoothstep(0.1, 0.85, R.z) * smoothstep(0.3, 0.8, Math.abs(T.y));
-      c.copy(skin).lerp(belly, front * 0.55).lerp(segment, bandW);
+      c.copy(skin)
+        .lerp(belly, front * 0.55)
+        .lerp(segment, bandW);
       b.vertex(V, N, c, b0, b1, w1);
     }
   }
@@ -297,16 +300,23 @@ function addHelmet(b: GeoBuilder, team: number): void {
   const place = new THREE.Matrix4().makeTranslation(0, M.helmetY, -0.015).multiply(tilt);
   // Dome.
   m.copy(place).multiply(new THREE.Matrix4().makeScale(1, M.helmetSquash, 1));
-  b.addRigid(new THREE.SphereGeometry(M.helmetRadius, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), m, col, BONE.head);
+  b.addRigid(
+    new THREE.SphereGeometry(M.helmetRadius, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    m,
+    col,
+    BONE.head,
+  );
   // Brim.
   m.copy(place).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
   b.addRigid(new THREE.TorusGeometry(M.helmetRadius, 0.036, 6, 28), m, rim, BONE.head);
   // Little top knob.
-  m.copy(place).multiply(new THREE.Matrix4().compose(
-    new THREE.Vector3(0, M.helmetRadius * M.helmetSquash - 0.005, 0),
-    new THREE.Quaternion(),
-    new THREE.Vector3(1, 0.55, 1),
-  ));
+  m.copy(place).multiply(
+    new THREE.Matrix4().compose(
+      new THREE.Vector3(0, M.helmetRadius * M.helmetSquash - 0.005, 0),
+      new THREE.Quaternion(),
+      new THREE.Vector3(1, 0.55, 1),
+    ),
+  );
   b.addRigid(new THREE.SphereGeometry(0.045, 8, 6), m, rim, BONE.head);
 }
 

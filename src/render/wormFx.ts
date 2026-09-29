@@ -54,7 +54,9 @@ export class SplashFx {
   constructor() {
     const geo = new THREE.IcosahedronGeometry(1, 0);
     // > 1 so droplets stay white after ACES tone mapping (same trick as the water foam).
-    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(SPLASH_COLORS.droplet).multiplyScalar(1.6) });
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(SPLASH_COLORS.droplet).multiplyScalar(1.6),
+    });
     this.drops = new THREE.InstancedMesh(geo, mat, SPLASH.maxDroplets);
     this.drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.drops.count = 0;
