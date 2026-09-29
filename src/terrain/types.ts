@@ -50,6 +50,19 @@ export interface ChunkMeshData {
   /** Triangle indices, or null for non-indexed triangle soup. */
   indices: Uint32Array | null;
   triangleCount: number;
+  /**
+   * Terrain-internal: collision geometry split into sub-blocks of the chunk so an edit only rebuilds the
+   * physics colliders of the sub-blocks that actually changed. Renderers ignore this.
+   */
+  colliderBlocks?: ColliderBlock[];
+}
+
+/** Compact collision triangles of one sub-block of a chunk (world-space positions). */
+export interface ColliderBlock {
+  /** Sub-block index within the chunk (bx + n * (by + n * bz)). */
+  index: number;
+  positions: Float32Array;
+  indices: Uint32Array;
 }
 
 /**
@@ -75,4 +88,15 @@ export interface TerrainStats {
   fullBuildMs: number;
   /** Main-thread time of the last carve rebuild (ms), or 0. */
   lastRebuildMs: number;
+  /** Bytes held by the density field (quantised chunk arrays + column cache). */
+  densityBytes: number;
+  /** Breakdown of the last rebuild: density edit + worker input extraction (ms). */
+  lastEditMs: number;
+  /** Breakdown of the last rebuild: collider replacement (ms). */
+  lastColliderMs: number;
+  /** Breakdown of the last rebuild: onChunkMesh listeners, i.e. the render upload prep (ms). */
+  lastEmitMs: number;
+  /** Chunks re-meshed / collider sub-blocks rebuilt by the last edit. */
+  lastRebuildChunks: number;
+  lastRebuildBlocks: number;
 }
