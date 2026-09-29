@@ -1,0 +1,31 @@
+{
+  "model": "opus",
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(ls:*)",
+      "Bash(gzip:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(lftp:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git push --force:*)"
+    ]
+  }
+}
