@@ -1,3 +1,4 @@
+import type { Command } from '../core/commands';
 import type { Vec3 } from '../core/math';
 import type { Game } from '../game';
 
@@ -6,6 +7,10 @@ export interface GameTestApi {
   state(): ReturnType<Game['state']>;
   spawnWorm(opts: { team: number; pos: Vec3 }): void;
   fire(weapon: string, dir: Vec3, power: number): void;
+  /** Queue any serializable Command (move/jump/face/…) for the next tick. */
+  command(cmd: Command): void;
+  /** Deterministic sim state hash (desync checks). */
+  hash(): number;
   /** Run exactly n sim ticks synchronously, then render one frame. */
   advance(ticks: number): number;
   /** Rebuild the world from a new seed. Resolves when ready. */
@@ -35,6 +40,8 @@ export function installTestApi(game: Game): GameTestApi {
     state: () => game.state(),
     spawnWorm: ({ team, pos }) => game.spawnWorm(team, pos),
     fire: (weapon, dir, power) => game.command({ type: 'fire', weapon, dir, power }),
+    command: (cmd) => game.command(cmd),
+    hash: () => game.sim.hash(),
     advance: (ticks) => {
       game.loop.advance(ticks);
       return game.sim.tick;

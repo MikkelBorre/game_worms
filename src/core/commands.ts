@@ -1,4 +1,4 @@
-import type { Vec3 } from './math';
+import type { Vec2, Vec3 } from './math';
 
 /**
  * Every player/bot/network action is a serializable Command.
@@ -7,7 +7,23 @@ import type { Vec3 } from './math';
 export type Command =
   | { type: 'noop' }
   | { type: 'spawnWorm'; team: number; pos: Vec3 }
-  | { type: 'fire'; weapon: string; dir: Vec3; power: number };
+  | { type: 'fire'; weapon: string; dir: Vec3; power: number }
+  /**
+   * Held walk intent for a worm, already resolved to a world-space XZ direction [x, z]
+   * (the input layer applies camera yaw; the sim knows nothing about cameras).
+   * Applied every tick until replaced; send [0, 0] to stop. Length is clamped to 1 (analog OK).
+   */
+  | { type: 'move'; wormId: number; dir: Vec2 }
+  /**
+   * Jump press. Without `kind` the sim does double-tap detection: a second press within
+   * BACKFLIP_WINDOW_TICKS makes a backflip, otherwise a forward jump fires when the window expires.
+   * With an explicit `kind` the jump fires immediately (bots, replays, alternative bindings).
+   */
+  | { type: 'jump'; wormId: number; kind?: JumpKind }
+  /** Set facing yaw (radians). yaw 0 faces +Z; forward = [sin(yaw), 0, cos(yaw)]. */
+  | { type: 'face'; wormId: number; yaw: number };
+
+export type JumpKind = 'forward' | 'backflip';
 
 export interface TimedCommand {
   tick: number;
