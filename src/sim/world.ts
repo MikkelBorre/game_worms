@@ -68,6 +68,24 @@ export class SimWorld {
     this.tick++;
   }
 
+  /**
+   * Wake resting worms (all, or those whose centre is within `radius` of `center`) so they re-check their
+   * footing this tick. Call after anything that changes the world under them, e.g. terrain carves.
+   */
+  wakeWorms(center?: Vec3, radius = Infinity): void {
+    for (const w of this.wormList) {
+      if (!w.resting) continue;
+      if (center) {
+        const p = w.s.pos;
+        const dx = p[0] - center[0];
+        const dy = p[1] - center[1];
+        const dz = p[2] - center[2];
+        if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+      }
+      w.wake();
+    }
+  }
+
   /** Controller-level access (knockback etc.). */
   worm(id: number): Worm | undefined {
     return this.wormById.get(id);

@@ -23,9 +23,12 @@ export class Harness {
       this.sim.events.on(type, (payload) => this.log.push({ tick: this.sim.tick, type, payload }));
   }
 
+  /** The collider created by the last box()/ground()/ramp() call (e.g. to remove it later). */
+  last: RAPIER.Collider | null = null;
+
   /** Axis-aligned static box. */
   box(center: Vec3, half: Vec3): this {
-    this.sim.physics.createCollider(
+    this.last = this.sim.physics.createCollider(
       RAPIER.ColliderDesc.cuboid(half[0], half[1], half[2]).setTranslation(...center),
     );
     return this;
@@ -37,17 +40,19 @@ export class Harness {
   }
 
   /**
-   * Ramp rising along +x at `deg` degrees; its top surface passes through (x0, 0) and it spans z ∈ [-w, w].
+   * Ramp rising along +x (dir 1) or -x (dir -1) at `deg` degrees; its top surface passes through (x0, 0) and
+   * it spans z ∈ [-w, w].
    */
-  ramp(deg: number, x0: number, length: number, w = 5): this {
+  ramp(deg: number, x0: number, length: number, w = 5, dir: 1 | -1 = 1): this {
     const a = (deg * Math.PI) / 180;
     const hy = 0.5;
-    const cx = x0 + (length / 2) * Math.cos(a) + hy * Math.sin(a);
+    const cx = x0 + dir * ((length / 2) * Math.cos(a) + hy * Math.sin(a));
     const cy = (length / 2) * Math.sin(a) - hy * Math.cos(a);
-    this.sim.physics.createCollider(
+    const r = (dir * a) / 2;
+    this.last = this.sim.physics.createCollider(
       RAPIER.ColliderDesc.cuboid(length / 2, hy, w)
         .setTranslation(cx, cy, 0)
-        .setRotation({ x: 0, y: 0, z: Math.sin(a / 2), w: Math.cos(a / 2) }),
+        .setRotation({ x: 0, y: 0, z: Math.sin(r), w: Math.cos(r) }),
     );
     return this;
   }

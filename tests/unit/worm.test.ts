@@ -5,6 +5,9 @@ import { initPhysics } from '../../src/sim/physics';
 import {
   BACKFLIP_WINDOW_TICKS,
   fallDamage,
+  FALL_DAMAGE_MIN_DROP,
+  REST_AFTER_TICKS,
+  REST_RECHECK_TICKS,
   WALK_SPEED,
   WORM_CENTER_TO_FEET,
   WORM_MAX_HP,
@@ -297,6 +300,156 @@ describe('worm: knockback', () => {
     const w = h.worm(id);
     expect(w.pos[0]).toBeLessThan(2.5);
     expect(w.state).toBe('idle');
+  });
+});
+
+describe('worm: steep ground', () => {
+  it('does not stand on a 70° face: slides down it, cannot jump off it, slow slide does not hurt', () => {
+    // 70° face rising along +x from x=0; a 1 m ledge sticks out of it at y=8 (face at y=8 is x≈2.91).
+    const xFace = (y: number) => y / Math.tan((70 * Math.PI) / 180);
+    h = new Harness().ground().ramp(70, 0, 14);
+    h.box([xFace(8) - 0.5, 7.9, 0], [0.5, 0.1, 1]);
+    const ledge = h.last!;
+    const id = h.spawn([xFace(8) - 0.45, 8.6, 0]);
+    h.run(40);
+    const w = h.worm(id);
+    expect(w.grounded).toBe(true);
+    expect(w.pos[1]).toBeGreaterThan(8.5);
+
+    h.sim.physics.removeCollider(ledge, true);
+    h.sim.wakeWorms();
+    let groundedOnFace = 0;
+    h.run(20, [], () => {
+      if (w.grounded && w.pos[1] > 1) groundedOnFace++;
+    });
+    // Drops off, hits the face and slides; never counts as standing on it.
+    expect(w.pos[1]).toBeLessThan(8);
+    expect(w.pos[1]).toBeGreaterThan(2);
+    expect(w.state).toBe('fall');
+    h.run(1, [{ type: 'jump', wormId: id, kind: 'backflip' }]); // no wall-jumps
+    h.run(300, [], () => {
+      if (w.grounded && w.pos[1] > 1) groundedOnFace++;
+    });
+    expect(groundedOnFace).toBe(0);
+    expect(h.events('wormJumped')).toHaveLength(0);
+    expect(w.grounded).toBe(true);
+    expect(w.pos[1]).toBeLessThan(STAND_Y + 0.15); // (in the corner, partly on the ramp box's lower edge)
+    // 8 m down, but braked by the face: counted drop is the speed-equivalent height, below the damage threshold.
+    const landed = h.events('wormLanded').at(-1)!;
+    expect(landed.drop).toBeLessThan(FALL_DAMAGE_MIN_DROP);
+    expect(w.hp).toBe(WORM_MAX_HP);
+  });
+
+  it('stands still on a 40° slope (no creep) and goes to rest', () => {
+    h = new Harness().ground().ramp(40, 2, 20);
+    const id = h.spawn([8, 6.5, 0]);
+    h.run(120);
+    const w = h.worm(id);
+    expect(w.grounded).toBe(true);
+    expect(w.state).toBe('idle');
+    const p = [...w.pos];
+    h.run(300);
+    expect(Math.hypot(w.pos[0] - p[0]!, w.pos[1] - p[1]!, w.pos[2] - p[2]!)).toBeLessThan(1e-3);
+    expect(h.sim.worm(id)!.resting).toBe(true);
+  });
+
+  it('a worm wedged in a V-crevice of two 60° faces counts as standing and can jump out', () => {
+    h = new Harness().ramp(60, 0, 6, 5, 1).ramp(60, 0, 6, 5, -1);
+    const id = h.spawn([0.05, 3, 0]);
+    h.run(90);
+    const w = h.worm(id);
+    expect(w.pos[1]).toBeLessThan(1.2);
+    expect(w.grounded).toBe(true);
+    expect(w.state).toBe('idle');
+
+    // Walking into the crevice wall: the controller maxes out its iterations without progress ⇒ jammed
+    // (skips the controller); the pose stays, re-sending the same intent does not unjam it, a jump does.
+    const p = [...w.pos];
+    h.run(30, [{ type: 'move', wormId: id, dir: [1, 0] }]);
+    expect(h.sim.worm(id)!.jammed).toBe(true);
+    h.run(30, [{ type: 'move', wormId: id, dir: [1, 0] }]);
+    expect(h.sim.worm(id)!.jammed).toBe(true);
+    expect(w.state).toBe('walk');
+    expect(Math.hypot(w.pos[0] - p[0]!, w.pos[1] - p[1]!, w.pos[2] - p[2]!)).toBeLessThan(0.01);
+    h.run(1, [{ type: 'jump', wormId: id, kind: 'backflip' }]);
+    expect(h.sim.worm(id)!.jammed).toBe(false);
+    expect(h.events('wormJumped')).toHaveLength(1);
+  });
+
+  it('a worm spawned in mid-air cannot jump before it has landed', () => {
+    h = new Harness().ground();
+    const id = h.spawn([0, 5, 0]);
+    h.run(1, [{ type: 'jump', wormId: id, kind: 'forward' }]);
+    h.run(90);
+    expect(h.events('wormJumped')).toHaveLength(0);
+    expect(h.worm(id).grounded).toBe(true);
+  });
+});
+
+describe('worm: resting (CPU saver)', () => {
+  it('rests when idle, wakes on commands and keeps behaving identically', () => {
+    const id = flat();
+    const worm = h.sim.worm(id)!;
+    h.run(REST_AFTER_TICKS + 2);
+    expect(worm.resting).toBe(true);
+    h.run(1, [{ type: 'move', wormId: id, dir: [1, 0] }]);
+    expect(worm.resting).toBe(false);
+    h.run(59);
+    expect(h.worm(id).pos[0]).toBeGreaterThan(WALK_SPEED * 0.98);
+    h.run(REST_AFTER_TICKS + 2, [{ type: 'move', wormId: id, dir: [0, 0] }]);
+    expect(worm.resting).toBe(true);
+    h.run(1, [{ type: 'jump', wormId: id, kind: 'backflip' }]);
+    expect(worm.resting).toBe(false);
+    expect(h.events('wormJumped')).toHaveLength(1);
+  });
+
+  it('a resting worm falls at once when woken after its ground is removed, and on its own soon after', () => {
+    h = new Harness().box([0, -8, 0], [20, 0.5, 20]); // floor far below
+    h.sim.waterLevel = -100;
+    h.box([0, -0.5, 0], [2, 0.5, 2]);
+    const platformA = h.last!;
+    h.box([10, -0.5, 0], [2, 0.5, 2]);
+    const platformB = h.last!;
+    const a = h.spawn([0, 0.6, 0]);
+    const b = h.spawn([10, 0.6, 0]);
+    h.run(40);
+    expect(h.sim.worm(a)!.resting).toBe(true);
+    expect(h.sim.worm(b)!.resting).toBe(true);
+
+    h.sim.physics.removeCollider(platformA, true);
+    h.sim.physics.removeCollider(platformB, true);
+    h.sim.wakeWorms([0, 0, 0], 3); // only A is woken explicitly (e.g. by an explosion there)
+    h.run(3);
+    expect(h.worm(a).grounded).toBe(false);
+    expect(h.worm(b).pos[1]).toBeCloseTo(STAND_Y, 1); // B still resting, re-checks within REST_RECHECK_TICKS
+    h.run(REST_RECHECK_TICKS);
+    expect(h.worm(b).grounded).toBe(false);
+    h.run(120);
+    expect(h.worm(a).pos[1]).toBeLessThan(-6);
+    expect(h.worm(b).pos[1]).toBeLessThan(-6);
+  });
+});
+
+describe('worm: worm-worm interaction', () => {
+  it('worms walk through each other: no blocking, no carrying, no standing on heads', () => {
+    h = new Harness().ground();
+    const a = h.spawn([0, 0.6, 0]);
+    const b = h.spawn([3, 0.6, 0]);
+    const c = h.spawn([6, 3, 0]); // dropped right onto d
+    const d = h.spawn([6, 0.6, 0]);
+    h.run(40);
+    const bPos = [...h.worm(b).pos];
+    h.run(120, [{ type: 'move', wormId: a, dir: [1, 0] }]);
+    expect(h.worm(a).pos[0]).toBeGreaterThan(5.5); // walked straight through b
+    expect(h.worm(b).pos).toEqual(bPos); // and b was not pushed or dragged along
+    expect(h.worm(b).state).toBe('idle');
+    expect(h.worm(c).pos[1]).toBeCloseTo(STAND_Y, 1); // fell through d onto the ground
+    expect(h.worm(d).pos[1]).toBeCloseTo(STAND_Y, 1);
+    // Overlapping idle worms stay put (Rapier would otherwise treat each as the other's moving platform).
+    const cPos = [...h.worm(c).pos];
+    h.run(120);
+    const cNow = h.worm(c).pos;
+    expect(Math.hypot(cNow[0] - cPos[0]!, cNow[1] - cPos[1]!, cNow[2] - cPos[2]!)).toBeLessThan(1e-3);
   });
 });
 
