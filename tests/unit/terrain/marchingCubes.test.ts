@@ -1,7 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateIsland } from '../../../src/terrain/generate';
 import { MC_TABLE, meshChunk } from '../../../src/terrain/marchingCubes';
-import { CHUNK_COUNT, PAD, VoxelField, chunkCoordOf, sampleX, sampleY, sampleZ } from '../../../src/terrain/voxels';
+import {
+  CHUNK_COUNT,
+  PAD,
+  VoxelField,
+  chunkCoordOf,
+  sampleX,
+  sampleY,
+  sampleZ,
+} from '../../../src/terrain/voxels';
 import { CHUNK_WORLD, WORLD_MIN, type ChunkCoord, type ChunkMeshData } from '../../../src/terrain/types';
 import { Rng } from '../../../src/core/rng';
 
@@ -27,13 +35,15 @@ function checkFinite(m: ChunkMeshData) {
     const len = Math.hypot(x, y, z);
     if (!(Math.abs(len - 1) < 1e-4)) problems.push(`normal[${i}] length ${len}`);
   }
-  for (let i = 0; i < m.indices!.length; i++) if (m.indices![i]! >= nv) problems.push(`index[${i}] out of range`);
+  for (let i = 0; i < m.indices!.length; i++)
+    if (m.indices![i]! >= nv) problems.push(`index[${i}] out of range`);
   expect(problems.slice(0, 5)).toEqual([]);
 }
 
 /** Merge chunk meshes by exact vertex position and count directed edges. */
 function edgeStats(meshes: ChunkMeshData[]) {
-  const key = (m: ChunkMeshData, i: number) => `${m.positions[i * 3]},${m.positions[i * 3 + 1]},${m.positions[i * 3 + 2]}`;
+  const key = (m: ChunkMeshData, i: number) =>
+    `${m.positions[i * 3]},${m.positions[i * 3 + 1]},${m.positions[i * 3 + 2]}`;
   const directed = new Map<string, number>();
   for (const m of meshes)
     for (let t = 0; t < m.triangleCount; t++) {
@@ -73,7 +83,11 @@ describe('meshChunk', () => {
   it('a sphere spanning 8 chunks is closed, consistently wound and seam-free', () => {
     const f = new VoxelField();
     // Centre exactly on a chunk corner.
-    const c: [number, number, number] = [WORLD_MIN.x + 5 * CHUNK_WORLD, WORLD_MIN.y + CHUNK_WORLD, WORLD_MIN.z + 5 * CHUNK_WORLD];
+    const c: [number, number, number] = [
+      WORLD_MIN.x + 5 * CHUNK_WORLD,
+      WORLD_MIN.y + CHUNK_WORLD,
+      WORLD_MIN.z + 5 * CHUNK_WORLD,
+    ];
     const res = f.addSphere(c, 4.3);
     const meshes = res.dirty.map((d) => mesh(f, d)).filter((m) => m.triangleCount > 0);
     expect(meshes.length).toBe(8);
@@ -89,7 +103,11 @@ describe('meshChunk', () => {
         const [pa, pb, pc] = [p(a), p(b), p(cc)] as [number[], number[], number[]];
         const u = [pb[0]! - pa[0]!, pb[1]! - pa[1]!, pb[2]! - pa[2]!];
         const v = [pc[0]! - pa[0]!, pc[1]! - pa[1]!, pc[2]! - pa[2]!];
-        const n = [u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!];
+        const n = [
+          u[1]! * v[2]! - u[2]! * v[1]!,
+          u[2]! * v[0]! - u[0]! * v[2]!,
+          u[0]! * v[1]! - u[1]! * v[0]!,
+        ];
         const out = [pa[0]! - c[0], pa[1]! - c[1], pa[2]! - c[2]];
         expect(n[0]! * out[0]! + n[1]! * out[1]! + n[2]! * out[2]!).toBeGreaterThan(0);
         const vn = [m.normals[a * 3]!, m.normals[a * 3 + 1]!, m.normals[a * 3 + 2]!];
@@ -122,7 +140,9 @@ describe('meshChunk', () => {
     const hi = [lo[0]! + CHUNK_WORLD, lo[1]! + CHUNK_WORLD, lo[2]! + CHUNK_WORLD];
     for (const e of s.boundaryEdges) {
       const pts = e.split('|').map((v) => v.split(',').map(Number));
-      const onFace = [0, 1, 2].some((ax) => pts.every((q) => q[ax] === lo[ax]) || pts.every((q) => q[ax] === hi[ax]));
+      const onFace = [0, 1, 2].some(
+        (ax) => pts.every((q) => q[ax] === lo[ax]) || pts.every((q) => q[ax] === hi[ax]),
+      );
       expect(onFace).toBe(true);
     }
   });
@@ -152,7 +172,9 @@ describe('meshChunk', () => {
       const hi = [sampleX(319), sampleY(95), sampleZ(319)];
       const inner = s.boundaryEdges.filter((e) => {
         const pts = e.split('|').map((v) => v.split(',').map(Number));
-        return ![0, 1, 2].some((ax) => pts.every((q) => q[ax]! <= lo[ax]!) || pts.every((q) => q[ax]! >= hi[ax]!));
+        return ![0, 1, 2].some(
+          (ax) => pts.every((q) => q[ax]! <= lo[ax]!) || pts.every((q) => q[ax]! >= hi[ax]!),
+        );
       });
       expect(inner).toEqual([]);
     });
@@ -168,7 +190,9 @@ describe('meshChunk', () => {
           const out = new Set<string>();
           for (let i = 0; i < mm.positions.length; i += 3)
             if (mm.positions[i] === X)
-              out.add(`${mm.positions[i]},${mm.positions[i + 1]},${mm.positions[i + 2]}|${mm.normals[i]},${mm.normals[i + 1]},${mm.normals[i + 2]}`);
+              out.add(
+                `${mm.positions[i]},${mm.positions[i + 1]},${mm.positions[i + 2]}|${mm.normals[i]},${mm.normals[i + 1]},${mm.normals[i + 2]}`,
+              );
           return out;
         };
         const a = onFace(m);
@@ -203,7 +227,11 @@ describe('meshChunk', () => {
 
   it('rejects wrongly sized input', () => {
     expect(() =>
-      meshChunk({ coord: { cx: 0, cy: 0, cz: 0 }, density: new Int8Array(10), columnTops: new Float32Array(PAD * PAD) }),
+      meshChunk({
+        coord: { cx: 0, cy: 0, cz: 0 },
+        density: new Int8Array(10),
+        columnTops: new Float32Array(PAD * PAD),
+      }),
     ).toThrow();
   });
 });

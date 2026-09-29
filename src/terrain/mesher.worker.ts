@@ -11,8 +11,7 @@ export interface MeshRequest {
 }
 
 export type MeshResponse =
-  | { job: number; mesh: import('./types').ChunkMeshData; ms: number }
-  | { job: number; error: string };
+  { job: number; mesh: import('./types').ChunkMeshData; ms: number } | { job: number; error: string };
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 

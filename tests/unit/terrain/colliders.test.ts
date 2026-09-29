@@ -17,7 +17,8 @@ describe('ChunkColliders', () => {
     const f = new VoxelField();
     const c = { cx: 3, cy: 1, cz: 3 };
     // A slab across the whole chunk.
-    for (let x = 0; x <= 16; x += 2) for (let z = 0; z <= 16; z += 2) f.addSphere([sampleX(96) + x, sampleY(40), sampleZ(96) + z], 1.6);
+    for (let x = 0; x <= 16; x += 2)
+      for (let z = 0; z <= 16; z += 2) f.addSphere([sampleX(96) + x, sampleY(40), sampleZ(96) + z], 1.6);
     const m = mesh(f, c);
     expect(m.triangleCount).toBeGreaterThan(500);
     const blockTris = (m.colliderBlocks ?? []).reduce((s, b) => s + b.indices.length / 3, 0);

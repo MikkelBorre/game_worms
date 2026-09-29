@@ -29,7 +29,8 @@ export function buildHeightmap(field: VoxelField, resolution: number): Heightmap
   const heights = new Float32Array(res * res);
   for (let z = 0; z < res; z++) {
     const wz = WORLD_MIN.z + (size * z) / (res - 1);
-    for (let x = 0; x < res; x++) heights[z * res + x] = surfaceHeightAt(field, WORLD_MIN.x + (size * x) / (res - 1), wz);
+    for (let x = 0; x < res; x++)
+      heights[z * res + x] = surfaceHeightAt(field, WORLD_MIN.x + (size * x) / (res - 1), wz);
   }
   return { resolution: res, minX: WORLD_MIN.x, minZ: WORLD_MIN.z, size, heights };
 }

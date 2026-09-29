@@ -214,7 +214,12 @@ function layout(seed: number, P: IslandParams): IslandInfo {
     }
   };
   const [vx, vz] = inDisc(P.plateauDistance[0], P.plateauDistance[1]);
-  const village = { x: vx, z: vz, y: r.range(P.plateauHeight[0], P.plateauHeight[1]), radius: P.plateauRadius };
+  const village = {
+    x: vx,
+    z: vz,
+    y: r.range(P.plateauHeight[0], P.plateauHeight[1]),
+    radius: P.plateauRadius,
+  };
   const peaks: IslandInfo['peaks'] = [];
   const count = r.int(P.peakCount[0], P.peakCount[1]);
   let guard = 0;
@@ -321,7 +326,9 @@ function surface(
   if (edge < 12) h = Math.min(h, P.seaFloor + (edge / 12) * (-1 - P.seaFloor));
 
   const caveMask =
-    smooth(0.6 - P.caveAmount, 0.85 - P.caveAmount, N.caveMask(x * 0.02 - 8, z * 0.02 + 3)) * smooth(7, 11, h) * (1 - pw);
+    smooth(0.6 - P.caveAmount, 0.85 - P.caveAmount, N.caveMask(x * 0.02 - 8, z * 0.02 + 3)) *
+    smooth(7, 11, h) *
+    (1 - pw);
   return { h, caveMask };
 }
 
@@ -384,7 +391,8 @@ export function generateIsland(seed: number, params: Partial<IslandParams> = {})
       const wz = (WORLD_MIN.z + (cz * CS + z * LAT) * VOXEL_SIZE) * fx;
       for (let y = 0; y < LN; y++) {
         const wy = sampleY(cy * CS + y * LAT) * fy;
-        for (let x = 0; x < LN; x++) out[o++] = n((WORLD_MIN.x + (cx * CS + x * LAT) * VOXEL_SIZE) * fx, wy, wz);
+        for (let x = 0; x < LN; x++)
+          out[o++] = n((WORLD_MIN.x + (cx * CS + x * LAT) * VOXEL_SIZE) * fx, wy, wz);
       }
     }
   };

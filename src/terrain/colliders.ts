@@ -86,7 +86,11 @@ export class ChunkColliders {
       const desc = RAPIER.ColliderDesc.trimesh(b.positions, b.indices, this.flags || undefined).setFriction(
         TERRAIN_FRICTION,
       );
-      entries.set(b.index, { collider: this.world.createCollider(desc), positions: b.positions, indices: b.indices });
+      entries.set(b.index, {
+        collider: this.world.createCollider(desc),
+        positions: b.positions,
+        indices: b.indices,
+      });
       this.created++;
       rebuilt++;
     }

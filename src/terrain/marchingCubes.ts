@@ -118,7 +118,8 @@ function buildCaseTable(): { offsets: Uint16Array; edges: Uint8Array } {
       }
       let tris: number[] | null = null;
       // Rotate the loop start until a membrane-free triangulation exists (always the case for MC loops).
-      for (let r = 0; r < loop.length && !tris; r++) tris = triangulate([...loop.slice(r), ...loop.slice(0, r)]);
+      for (let r = 0; r < loop.length && !tris; r++)
+        tris = triangulate([...loop.slice(r), ...loop.slice(0, r)]);
       if (!tris) throw new Error(`marching cubes table: cannot triangulate case ${cs}`);
       all.push(...tris);
     }
@@ -433,11 +434,24 @@ export function meshChunk(input: MeshInput): ChunkMeshData {
     colors[o + 2] = col[2];
   }
   const colliderBlocks = splitColliderBlocks(positions, indices, ni / 3);
-  return { id, coord: { ...coord }, positions, normals, colors, indices, triangleCount: ni / 3, colliderBlocks };
+  return {
+    id,
+    coord: { ...coord },
+    positions,
+    normals,
+    colors,
+    indices,
+    triangleCount: ni / 3,
+    colliderBlocks,
+  };
 }
 
 /** Compact per-sub-block collision geometry from the final mesh (tbuf holds each triangle's block). */
-function splitColliderBlocks(positions: Float32Array, indices: Uint32Array, triCount: number): ColliderBlock[] {
+function splitColliderBlocks(
+  positions: Float32Array,
+  indices: Uint32Array,
+  triCount: number,
+): ColliderBlock[] {
   const counts = new Uint32Array(NB3);
   for (let t = 0; t < triCount; t++) counts[tbuf[t]!]!++;
   const nv = positions.length / 3;
@@ -479,6 +493,7 @@ export function meshTransferables(m: ChunkMeshData): ArrayBuffer[] {
     m.colors.buffer as ArrayBuffer,
   ];
   if (m.indices) out.push(m.indices.buffer as ArrayBuffer);
-  for (const b of m.colliderBlocks ?? []) out.push(b.positions.buffer as ArrayBuffer, b.indices.buffer as ArrayBuffer);
+  for (const b of m.colliderBlocks ?? [])
+    out.push(b.positions.buffer as ArrayBuffer, b.indices.buffer as ArrayBuffer);
   return out;
 }

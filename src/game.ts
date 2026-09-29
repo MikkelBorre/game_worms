@@ -88,7 +88,7 @@ export class Game {
   renderFrame(alpha: number, dt: number): void {
     this.renderTime += dt;
     this.cameraRig.update(dt);
-    this.sky.update(this.ctx.camera);
+    this.sky.update(this.ctx.camera, this.renderTime);
     this.water.update(this.renderTime, this.ctx.camera);
     this.wormView.sync(this.sim.worms, alpha);
     this.ctx.render();

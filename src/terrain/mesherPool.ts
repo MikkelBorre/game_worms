@@ -26,7 +26,8 @@ export class MesherDisposedError extends Error {
 }
 
 export function defaultWorkerCount(): number {
-  const hc = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
+  const hc =
+    typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
   return Math.min(Math.max(1, hc - 1), 4);
 }
 
@@ -57,7 +58,10 @@ export function createWorkerMesher(count = defaultWorkerCount()): MesherBackend 
   };
 
   for (let i = 0; i < count; i++) {
-    const w = new Worker(new URL('./mesher.worker.ts', import.meta.url), { type: 'module', name: `mesher-${i}` });
+    const w = new Worker(new URL('./mesher.worker.ts', import.meta.url), {
+      type: 'module',
+      name: `mesher-${i}`,
+    });
     w.onmessage = (e: MessageEvent<MeshResponse>) => {
       const res = e.data;
       const p = inflight.get(res.job);

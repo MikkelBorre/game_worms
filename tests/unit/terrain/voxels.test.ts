@@ -80,8 +80,16 @@ describe('VoxelField', () => {
   const cases: [string, () => [number, number, number], number][] = [
     ['surface point inside a chunk', () => surfacePoint(4.3, -3.7), 3],
     ['on a chunk face (x border)', () => surfacePoint(WORLD_MIN.x + 5 * CHUNK_WORLD, 2.2), 3],
-    ['on a chunk corner (x, z and y borders)', () => [WORLD_MIN.x + 5 * CHUNK_WORLD, WORLD_MIN.y + CHUNK_WORLD, WORLD_MIN.z + 5 * CHUNK_WORLD], 3],
-    ['just inside a border (padding only)', () => surfacePoint(WORLD_MIN.x + 4 * CHUNK_WORLD + 0.6, 10.1), 1.2],
+    [
+      'on a chunk corner (x, z and y borders)',
+      () => [WORLD_MIN.x + 5 * CHUNK_WORLD, WORLD_MIN.y + CHUNK_WORLD, WORLD_MIN.z + 5 * CHUNK_WORLD],
+      3,
+    ],
+    [
+      'just inside a border (padding only)',
+      () => surfacePoint(WORLD_MIN.x + 4 * CHUNK_WORLD + 0.6, 10.1),
+      1.2,
+    ],
     ['at the world edge', () => [WORLD_MIN.x + 0.2, -6, 0], 3],
   ];
 
@@ -99,7 +107,11 @@ describe('VoxelField', () => {
   it('carve on a chunk corner dirties the 8 chunks around it plus padding neighbours only', () => {
     const f = generateIsland(4321).field;
     // Corner between chunks (4..5, 0..1, 4..5); sphere fully solid there so it changes samples on all sides.
-    const c: [number, number, number] = [WORLD_MIN.x + 5 * CHUNK_WORLD, WORLD_MIN.y + CHUNK_WORLD, WORLD_MIN.z + 5 * CHUNK_WORLD];
+    const c: [number, number, number] = [
+      WORLD_MIN.x + 5 * CHUNK_WORLD,
+      WORLD_MIN.y + CHUNK_WORLD,
+      WORLD_MIN.z + 5 * CHUNK_WORLD,
+    ];
     const res = f.carveSphere(c, 2);
     const got = res.dirty.map((d) => `${d.cx},${d.cy},${d.cz}`).sort();
     const want: string[] = [];

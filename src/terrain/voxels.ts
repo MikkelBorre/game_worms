@@ -52,7 +52,8 @@ export function quantize(d: number): number {
   return q < -127 ? -127 : q > -1 ? -1 : q;
 }
 
-export const chunkIndex = (cx: number, cy: number, cz: number): number => cx + CHUNKS_X * (cy + CHUNKS_Y * cz);
+export const chunkIndex = (cx: number, cy: number, cz: number): number =>
+  cx + CHUNKS_X * (cy + CHUNKS_Y * cz);
 
 export function chunkCoordOf(index: number): ChunkCoord {
   const cx = index % CHUNKS_X;
@@ -320,7 +321,8 @@ export class VoxelField {
 
   /** Recompute columnTop for columns i0..i1 × k0..k1 (inclusive). */
   updateColumns(i0: number, i1: number, k0: number, k1: number): void {
-    for (let k = k0; k <= k1; k++) for (let i = i0; i <= i1; i++) this.columnTop[i + k * SX] = this.scanColumn(i, k);
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) this.columnTop[i + k * SX] = this.scanColumn(i, k);
   }
 
   /** Highest solid surface y (metres) of a sample column, WORLD_MIN.y if the column is all air. */
@@ -329,7 +331,7 @@ export class VoxelField {
     const cz = k >> 5;
     const lxz = (i & 31) + ((k & 31) << 10);
     let above = Q_AIR;
-    for (let j = SY - 1; j >= 0; ) {
+    for (let j = SY - 1; j >= 0;) {
       const ci = chunkIndex(cx, j >> 5, cz);
       const a = this.chunks[ci];
       if (!a) {

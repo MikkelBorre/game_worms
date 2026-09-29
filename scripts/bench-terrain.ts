@@ -33,7 +33,12 @@ const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
 const meshOf = (field: VoxelField, ci: number, cullBelow: number | null): ChunkMeshData => {
   const c = chunkCoordOf(ci);
-  return meshChunk({ coord: c, density: field.extractPadded(c), columnTops: field.extractColumnTops(c), cullBelow });
+  return meshChunk({
+    coord: c,
+    density: field.extractPadded(c),
+    columnTops: field.extractColumnTops(c),
+    cullBelow,
+  });
 };
 
 async function main() {
@@ -43,10 +48,12 @@ async function main() {
   // Warm up the JIT once so numbers reflect steady state (the browser gets similar warm-up from the first chunks).
   {
     const w = generateIsland(seed + 1);
-    for (let ci = 0; ci < CHUNK_COUNT; ci += 7) if (!w.field.isTriviallyEmpty(chunkCoordOf(ci))) meshOf(w.field, ci, DEFAULT_CULL_BELOW);
+    for (let ci = 0; ci < CHUNK_COUNT; ci += 7)
+      if (!w.field.isTriviallyEmpty(chunkCoordOf(ci))) meshOf(w.field, ci, DEFAULT_CULL_BELOW);
     for (let n = 0; n < 5; n++) {
       const res = w.field.carveSphere([n * 7 - 14, surfaceHeightAt(w.field, n * 7 - 14, 3), 3], 3);
-      for (const c of res.dirty) meshChunk({ coord: c, density: w.field.extractPadded(c), columnTops: w.field.extractColumnTops(c) });
+      for (const c of res.dirty)
+        meshChunk({ coord: c, density: w.field.extractPadded(c), columnTops: w.field.extractColumnTops(c) });
     }
   }
 
@@ -56,9 +63,15 @@ async function main() {
   const genMs = now() - t;
   let nonUniform = 0;
   for (const a of field.chunks) if (a) nonUniform++;
-  console.log(`generate            ${f1(genMs)} ms  (heightfield ${f1(timings.heightfieldMs)}, 3D fill ${f1(timings.fillMs)}, column cache ${f1(timings.columnsMs)})`);
-  console.log(`density storage     ${mb(field.bytes())}  (${nonUniform}/${CHUNK_COUNT} chunks non-uniform, Int8 quantised)`);
-  console.log(`village plateau     (${f1(info.village.x)}, ${f1(info.village.z)}) y=${f1(info.village.y)}; peaks ${info.peaks.length}`);
+  console.log(
+    `generate            ${f1(genMs)} ms  (heightfield ${f1(timings.heightfieldMs)}, 3D fill ${f1(timings.fillMs)}, column cache ${f1(timings.columnsMs)})`,
+  );
+  console.log(
+    `density storage     ${mb(field.bytes())}  (${nonUniform}/${CHUNK_COUNT} chunks non-uniform, Int8 quantised)`,
+  );
+  console.log(
+    `village plateau     (${f1(info.village.x)}, ${f1(info.village.z)}) y=${f1(info.village.y)}; peaks ${info.peaks.length}`,
+  );
 
   // --- Full island mesh --------------------------------------------------------------------------------------
   for (const [label, cull] of [
@@ -102,7 +115,10 @@ async function main() {
     const cols = new ChunkColliders(world, flags);
     t = now();
     for (const m of meshes.values()) cols.set(m);
-    console.log(`colliders (${label})`.padEnd(32) + `${f1(now() - t)} ms, ${cols.size} sub-block trimeshes in ${meshes.size} chunks`);
+    console.log(
+      `colliders (${label})`.padEnd(32) +
+        `${f1(now() - t)} ms, ${cols.size} sub-block trimeshes in ${meshes.size} chunks`,
+    );
     cols.dispose();
     world.free();
   }
@@ -157,14 +173,27 @@ async function main() {
       if (orig) cols.set(orig);
       else cols.remove(m.id);
     }
-    return { dirty: res.dirty.length, edit, extract, mesh, meshMax, collider, blocks, main: edit + extract + collider };
+    return {
+      dirty: res.dirty.length,
+      edit,
+      extract,
+      mesh,
+      meshMax,
+      collider,
+      blocks,
+      main: edit + extract + collider,
+    };
   };
   const repeat = (center: [number, number, number], radius: number, n: number): Sample[] => {
     const out: Sample[] = [];
     for (let i = 0; i < n; i++) out.push(trial(center, radius));
     return out;
   };
-  const med = (xs: Sample[], k: keyof Sample) => pct(xs.map((x) => x[k]), 0.5);
+  const med = (xs: Sample[], k: keyof Sample) =>
+    pct(
+      xs.map((x) => x[k]),
+      0.5,
+    );
   const max = (xs: Sample[], k: keyof Sample) => Math.max(...xs.map((x) => x[k]));
   const report = (label: string, xs: Sample[]) => {
     const m = med(xs, 'main');
@@ -220,7 +249,12 @@ async function main() {
     xs.push(trial([x, h, z], 3));
   }
   console.log(
-    `${runs} random surface explosions r=3: MAIN THREAD median ${f2(med(xs, 'main'))} ms, p95 ${f2(pct(xs.map((x) => x.main), 0.95))} ms, ` +
+    `${runs} random surface explosions r=3: MAIN THREAD median ${f2(med(xs, 'main'))} ms, p95 ${f2(
+      pct(
+        xs.map((x) => x.main),
+        0.95,
+      ),
+    )} ms, ` +
       `max ${f2(max(xs, 'main'))} ms; re-mesh total median ${f2(med(xs, 'mesh'))} ms; dirty chunks median ${med(xs, 'dirty')}, max ${max(xs, 'dirty')}`,
   );
   cols.dispose();
