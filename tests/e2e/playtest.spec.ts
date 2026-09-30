@@ -55,7 +55,7 @@ test('horizon and fog towards the sun', async ({ page }) => {
   await page.evaluate(() => {
     const g = window.__game!;
     g.pause(true);
-    // Sun sits to the north-west (-x, -z); look past the island towards it for glints + haze.
+    // Golden-hour sun: low (23°), 40° west of −Z. Look past the island towards it for the sun path + haze.
     g.camera([70, 12, 90], [-40, 8, -60]);
     g.renderFrames(4, 0.25);
   });
@@ -132,10 +132,26 @@ test('camera rig: setPose is stable, Tab toggles, WASD flies', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
+test('golden hour: beach with palms, rocks and grass scatter', async ({ page }) => {
+  const errors = await openGame(page, 1234);
+  const perf = await page.evaluate(() => {
+    const g = window.__game!;
+    g.pause(true);
+    // South beach of seed 1234 seen along the coast, sun ahead-left: palms, beach rocks, foam, sun path.
+    g.camera([30, 10, 75], [0, 2, 45]);
+    g.renderFrames(3, 1 / 30);
+    return g.state().perf;
+  });
+  await page.waitForTimeout(500);
+  console.log('PERF beach scatter', JSON.stringify(perf));
+  await page.screenshot({ path: shotPath('golden-beach-scatter') });
+  expect(errors).toEqual([]);
+});
+
 // ---------------------------------------------------------------------------------------------
 // M2 – worms and cameras. Seed 1234 has a gentle sandy beach on the +Z side of the island
-// (x ≈ 0, z ≈ 44–53 slopes from ~3 m down to the water). The sun is to the north-west (−Z), so worms
-// facing −Z (yaw π) are front-lit for a camera standing inland of them.
+// (x ≈ 0, z ≈ 44–53 slopes from ~3 m down to the water). The low sun is to the north-west (−Z, −X), so
+// worms facing −Z (yaw π) are front-lit for a camera standing inland of them.
 // ---------------------------------------------------------------------------------------------
 
 /** Spawn worms, let them land, and return their ids. Runs inside the page. */
@@ -222,9 +238,10 @@ test('worm backflip mid-air', async ({ page }) => {
     g.advance(2);
     g.command({ type: 'jump', wormId: id!, kind: 'backflip' });
     // ~0.6 s of a ~1.4 s flight: just past the apex → worm upside down-ish.
-    for (let i = 0; i < 40; i += 2) {
-      g.advance(2);
-      g.renderFrames(1, 2 / 60);
+    // Coarse 4-tick steps: fewer heavy swiftshader frames (each advance() also renders one).
+    for (let i = 0; i < 40; i += 4) {
+      g.advance(4);
+      g.renderFrames(1, 4 / 60);
     }
     const w = g.state().worms.find((x) => x.id === id)!;
     g.camera([w.pos[0] - 0.6, w.pos[1] + 0.4, w.pos[2] - 4.2], [w.pos[0] - 0.3, w.pos[1] - 0.3, w.pos[2]]);
@@ -248,7 +265,7 @@ test('follow camera behind the active worm', async ({ page }) => {
     g.command({ type: 'face', wormId: id!, yaw: Math.PI * 0.8 }); // towards the sun
     g.advance(1);
     g.cameraMode('follow');
-    g.renderFrames(40, 1 / 20); // damped swoop from the overview pose
+    g.renderFrames(20, 0.1); // damped swoop from the overview pose (dt is capped at 0.1 s by the rig)
     return g.state().camera;
   }, id);
   console.log('follow camera', JSON.stringify(cam));
@@ -269,9 +286,9 @@ test('aim camera over the shoulder', async ({ page }) => {
     g.command({ type: 'face', wormId: id!, yaw: Math.PI });
     g.advance(1);
     g.cameraMode('follow');
-    g.renderFrames(30, 1 / 20);
+    g.renderFrames(15, 0.1);
     g.cameraMode('aim');
-    g.renderFrames(30, 1 / 20);
+    g.renderFrames(15, 0.1);
     return g.state().camera;
   }, id);
   console.log('aim camera', JSON.stringify(cam));
@@ -301,5 +318,61 @@ test('worm walks into the sea: splash', async ({ page }) => {
   console.log('splash', JSON.stringify(res));
   await page.screenshot({ path: shotPath('worm-splash') });
   expect(res.alive).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('worms on the sand between palms (scatter close-up)', async ({ page }) => {
+  const errors = await openGame(page, 1234);
+  const ids = await spawnOnBeach(page, [
+    { team: 0, x: -3, z: 50.5 },
+    { team: 1, x: -1.2, z: 51.2 },
+    { team: 3, x: 1.0, z: 50.2 },
+  ]);
+  const perf = await page.evaluate((ids) => {
+    const g = window.__game!;
+    ids.forEach((id, i) => g.command({ type: 'face', wormId: id, yaw: Math.PI * 0.5 + (i - 1) * 0.5 }));
+    g.advance(1);
+    g.renderFrames(20, 1 / 30);
+    const h = g.heightAt(-1, 51);
+    g.camera([6.5, h + 2.2, 55.5], [-3, h + 0.3, 47]);
+    g.renderFrames(2, 1 / 30);
+    return g.state().perf;
+  }, ids);
+  console.log('PERF sand close-up', JSON.stringify(perf));
+  await page.screenshot({ path: shotPath('worm-beach-scatter') });
+  expect(errors).toEqual([]);
+});
+
+test('worm v2 faces: happy idle, determined after aiming, scared while falling', async ({ page }) => {
+  const errors = await openGame(page, 1234);
+  const [aimer, idle] = await spawnOnBeach(page, [
+    { team: 0, x: 0, z: 46 },
+    { team: 1, x: 0.9, z: 46.3 },
+  ]);
+  const states = await page.evaluate(
+    ([aimer, idle]) => {
+      const g = window.__game!;
+      g.command({ type: 'face', wormId: aimer!, yaw: Math.PI + 0.25 });
+      g.command({ type: 'face', wormId: idle!, yaw: Math.PI - 0.2 });
+      g.advance(1);
+      // Aim with the red worm: its face turns determined and stays so for a moment after leaving aim.
+      g.selectWorm(aimer!);
+      g.cameraMode('aim');
+      g.renderFrames(15, 1 / 15);
+      // A third worm dropped from a small height is mid-fall (scared) when the shot is taken.
+      g.spawnWorm({ team: 2, pos: [-1.1, g.heightAt(-1.1, 46.2) + 1.6, 46.2] });
+      g.advance(1);
+      const faller = g.state().worms.at(-1)!.id;
+      g.command({ type: 'face', wormId: faller, yaw: Math.PI - 0.3 }); // towards the camera
+      g.advance(10);
+      g.renderFrames(6, 1 / 30);
+      const w = g.state().worms.find((x) => x.id === aimer)!;
+      g.camera([w.pos[0] + 0.1, w.pos[1] + 0.35, w.pos[2] - 2.4], [w.pos[0] + 0.1, w.pos[1] + 0.3, w.pos[2]]);
+      return g.state().worms.map((x) => x.state);
+    },
+    [aimer, idle] as const,
+  );
+  console.log('faces', JSON.stringify(states));
+  await page.screenshot({ path: shotPath('worm-faces') });
   expect(errors).toEqual([]);
 });

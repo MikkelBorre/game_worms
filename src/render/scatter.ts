@@ -45,6 +45,9 @@ export const SCATTER = {
   /** Grass/flower fade: full size until `start` m from the camera, gone at `end` m. */
   grassFadeStart: 34,
   grassFadeEnd: 52,
+  /** Near-camera fade: hidden closer than `nearHide` m, full size from `nearFull` m. */
+  grassNearHide: 1.2,
+  grassNearFull: 2.6,
   /** Grass grows between these heights above sea level (sand below, bare peaks above). */
   grassMinY: 2.3,
   grassMaxY: 25,
@@ -348,11 +351,18 @@ function patchVertex(
   uTime: { value: number },
 ): void {
   shader.uniforms.uTime = uTime;
-  shader.uniforms.uFade = { value: new THREE.Vector2(SCATTER.grassFadeStart, SCATTER.grassFadeEnd) };
+  shader.uniforms.uFade = {
+    value: new THREE.Vector4(
+      SCATTER.grassFadeStart,
+      SCATTER.grassFadeEnd,
+      SCATTER.grassNearHide,
+      SCATTER.grassNearFull,
+    ),
+  };
   shader.uniforms.uWind = { value: SCATTER.windStrength };
   let decl = `
 uniform float uTime;
-uniform vec2 uFade;
+uniform vec4 uFade; // far start, far end, near hidden, near full
 uniform float uWind;
 attribute float aPart;
 attribute float aSway;
@@ -362,7 +372,9 @@ attribute float aSway;
   vec3 wwInst = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz;
 `;
   if (p.fade) {
-    body += `  transformed *= 1.0 - smoothstep(uFade.x, uFade.y, distance(cameraPosition, wwInst));\n`;
+    // Shrink away far off (no fill cost) and right in front of the camera (never blocks the view).
+    body += `  float wwD = distance(cameraPosition, wwInst);\n`;
+    body += `  transformed *= (1.0 - smoothstep(uFade.x, uFade.y, wwD)) * smoothstep(uFade.z, uFade.w, wwD);\n`;
   }
   if (p.mode === 'grass') body += '  if (aPart > 0.5 && aKind < 0.5) transformed = vec3(0.0);\n';
   body += `
@@ -611,7 +623,7 @@ export function createScatter(): Scatter {
         q.setFromUnitVectors(up, n.clone().lerp(up, 0.4).normalize());
         qa.setFromAxisAngle(up, r.next() * Math.PI * 2);
         q.multiply(qa);
-        const sc = r.range(0.75, 1.35);
+        const sc = r.range(0.65, 1.15);
         p.set(x, y - 0.03, z);
         m.compose(p, q, s.set(sc, sc * r.range(0.8, 1.25), sc));
         const t = r.next();
