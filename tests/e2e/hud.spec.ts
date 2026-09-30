@@ -20,7 +20,10 @@ test('HUD: roster, minimap, name tags and weapon menu', async ({ page }) => {
   await expect(page.locator('.roster-team')).toHaveCount(2);
   await expect(page.locator('.roster-worm')).toHaveCount(6);
   await expect(page.locator('.roster-worm.is-active')).toHaveCount(1);
-  await expect(page.locator('.roster-worm.is-active')).toHaveAttribute('data-worm-id', String(state.activeWormId));
+  await expect(page.locator('.roster-worm.is-active')).toHaveAttribute(
+    'data-worm-id',
+    String(state.activeWormId),
+  );
   await expect(page.locator('.roster-worm').first()).toContainText('Konrad');
 
   // Minimap island raster is not blank (sea + sand + grass + rock).
@@ -28,7 +31,8 @@ test('HUD: roster, minimap, name tags and weapon menu', async ({ page }) => {
     const c = document.querySelector<HTMLCanvasElement>('.mm-map')!;
     const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
     const set = new Set<number>();
-    for (let i = 0; i < d.length; i += 16) set.add((d[i]! >> 4) | ((d[i + 1]! >> 4) << 4) | ((d[i + 2]! >> 4) << 8));
+    for (let i = 0; i < d.length; i += 16)
+      set.add((d[i]! >> 4) | ((d[i + 1]! >> 4) << 4) | ((d[i + 2]! >> 4) << 8));
     return { size: c.width, distinct: set.size };
   });
   expect(colours.size).toBeGreaterThanOrEqual(128);

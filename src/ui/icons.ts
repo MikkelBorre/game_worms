@@ -76,13 +76,15 @@ export const WEAPON_ICONS: Record<string, string> = {
 <circle cx="36" cy="37" r="3" fill="#f2c230"/>`),
   banana: icon(`<path d="M9 13q-2 22 16 27t16-8q-12 7-22-3T15 12Z" fill="#ffd93b"/>
 <path d="M13 12l-2-5 5 1Z" fill="#6b4a2b"/><path d="M15 20q3 12 16 14" fill="none" stroke="#e0a91f" stroke-width="1.6"/>`),
-  airstrike: icon(`<path d="M24 5l3 9v8l16 8v4l-16-4v8l5 4v3l-8-2-8 2v-3l5-4v-8L5 34v-4l16-8v-8Z" fill="#9aa4b3"/>
+  airstrike:
+    icon(`<path d="M24 5l3 9v8l16 8v4l-16-4v8l5 4v3l-8-2-8 2v-3l5-4v-8L5 34v-4l16-8v-8Z" fill="#9aa4b3"/>
 <path d="M24 8v28" stroke="#6d7581" stroke-width="1.4" fill="none"/>`),
   homing: icon(`<circle cx="33" cy="15" r="9" fill="none" stroke="#e0422f" stroke-width="2.4"/>
 <circle cx="33" cy="15" r="3" fill="#e0422f" stroke="none"/>
 <g transform="rotate(-40 18 30)"><rect x="5" y="26" width="26" height="8" rx="4" fill="#d9dde3"/>
 <path d="M31 26q7 4 0 8Z" fill="#e0422f"/><path d="M6 26l-4-5h7l3 5ZM6 34l-4 5h7l3-5Z" fill="#8d96a3"/></g>`),
-  sheep: icon(`<g fill="#fbfbf6"><circle cx="17" cy="22" r="7"/><circle cx="26" cy="19" r="7"/><circle cx="31" cy="27" r="7"/>
+  sheep:
+    icon(`<g fill="#fbfbf6"><circle cx="17" cy="22" r="7"/><circle cx="26" cy="19" r="7"/><circle cx="31" cy="27" r="7"/>
 <circle cx="21" cy="30" r="7"/><circle cx="14" cy="28" r="5"/></g>
 <path d="M17 36v6M28 36v6" stroke-width="3" stroke-linecap="round"/>
 <ellipse cx="38" cy="22" rx="5.5" ry="6.5" fill="#2c2c30"/>

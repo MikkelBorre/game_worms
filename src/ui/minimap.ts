@@ -165,11 +165,18 @@ export class Minimap {
     const k = this.key;
     k.length = 0;
     k.push(f.activeWormId ?? -1, Math.round(f.heading * 120));
+    let active: MinimapWorm | undefined;
+    const sx = OVERLAY_RES / this.size;
     for (const w of f.worms) {
-      const [px, pz] = this.toPx(w.x, w.z);
-      k.push(w.id, w.team, w.alive ? 1 : 0, Math.round(px * 2), Math.round(pz * 2));
+      if (w.alive && w.id === f.activeWormId) active = w;
+      k.push(
+        w.id,
+        w.team,
+        w.alive ? 1 : 0,
+        Math.round((w.x - this.minX) * sx * 2),
+        Math.round((w.z - this.minZ) * sx * 2),
+      );
     }
-    const active = f.worms.find((w) => w.id === f.activeWormId && w.alive);
     let ax = OVERLAY_RES / 2,
       az = OVERLAY_RES / 2;
     if (active) [ax, az] = this.toPx(active.x, active.z);

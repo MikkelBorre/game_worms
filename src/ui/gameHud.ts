@@ -18,6 +18,8 @@ export interface GameHud {
   /** Call after each rendered frame (after camera + worm views were updated). */
   update(): void;
   setHeightmap(h: HeightmapData): void;
+  /** Main-thread cost of update() (model build + projection + DOM diff), ms. */
+  stats(): { updateMsAvg: number; updateMsMax: number; frames: number };
   dispose(): void;
 }
 
@@ -94,6 +96,7 @@ export function attachHud(game: Game, root: HTMLElement, opts: AttachHudOptions 
   const occl = new Map<number, { frame: number; hidden: boolean }>();
   let frame = 0;
   const dir: Vec3 = [0, 0, 0];
+  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }); // reused
   const occluded = (id: number, from: Vec3, to: Vec3): boolean => {
     let c = occl.get(id);
     if (c && frame - c.frame < OCCLUSION_INTERVAL && (id + frame) % OCCLUSION_INTERVAL !== 0) return c.hidden;
@@ -103,10 +106,12 @@ export function attachHud(game: Game, root: HTMLElement, opts: AttachHudOptions 
     const len = Math.hypot(dir[0], dir[1], dir[2]);
     let hidden = false;
     if (len > 0.5) {
-      const ray = new RAPIER.Ray(
-        { x: from[0], y: from[1], z: from[2] },
-        { x: dir[0] / len, y: dir[1] / len, z: dir[2] / len },
-      );
+      ray.origin.x = from[0];
+      ray.origin.y = from[1];
+      ray.origin.z = from[2];
+      ray.dir.x = dir[0] / len;
+      ray.dir.y = dir[1] / len;
+      ray.dir.z = dir[2] / len;
       // Stop a bit short of the anchor so the ground right under a worm doesn't count.
       const hit = game.sim.physics.castRay(ray, len - 0.3, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC);
       hidden = hit !== null;
@@ -120,53 +125,70 @@ export function attachHud(game: Game, root: HTMLElement, opts: AttachHudOptions 
   const renderPose = (id: number) => game.wormView.renderPose(id);
   const demoWind: [number, number] = [0, 0];
 
+  let msSum = 0;
+  let msMax = 0;
+  let msFrames = 0;
+  const update = () => {
+    frame++;
+    const sim = game.sim;
+    if (!sim) return;
+    if (sim !== simRef || sim.worms.length !== wormCount) {
+      rebuild();
+      occl.clear();
+    }
+    const worms = sim.worms;
+    for (let i = 0; i < worms.length; i++) {
+      const w = worms[i]!;
+      const hw = hudWorms.get(w.id)!;
+      hw.hp = w.hp;
+      hw.alive = w.alive;
+      const mw: HudMapWorm = model.wormsOnMap[i]!;
+      const p = game.wormView.renderPose(w.id)?.pos ?? w.pos;
+      mw.x = p[0];
+      mw.z = p[2];
+      mw.alive = w.alive;
+      const s = sources[i]!;
+      s.hp = w.hp;
+      s.alive = w.alive;
+    }
+    model.activeWormId = game.activeWormId;
+    model.cameraHeading = game.cameraRig.heading();
+    const cam = game.ctx.camera;
+    model.cameraXZ![0] = cam.position.x;
+    model.cameraXZ![1] = cam.position.z;
+    if (model.weapon!.id !== weaponId) {
+      model.weapon = { id: weaponId, name: weaponDisplayName(weaponId), ammo: -1, maxAmmo: -1 };
+    }
+    if (opts.demo) {
+      const t = frame / 60; // rendered frames, so screenshots are reproducible
+      model.turnTimeLeft = 45 - (t % 45);
+      demoWind[0] = 0.55 * Math.sin(0.4 + t * 0.05);
+      demoWind[1] = -0.55 * Math.cos(0.4 + t * 0.05);
+      model.wind = demoWind;
+    }
+    const mode = game.cameraRig.mode;
+    projectNameTags(cam, sources, renderPose, {
+      out: model.nameTags,
+      hideId: mode === 'follow' || mode === 'aim' ? game.activeWormId : null,
+      occluded,
+    });
+    hud.update(model);
+  };
+
   return {
     hud,
     update() {
-      frame++;
-      const sim = game.sim;
-      if (!sim) return;
-      if (sim !== simRef || sim.worms.length !== wormCount) {
-        rebuild();
-        occl.clear();
-      }
-      const worms = sim.worms;
-      for (let i = 0; i < worms.length; i++) {
-        const w = worms[i]!;
-        const hw = hudWorms.get(w.id)!;
-        hw.hp = w.hp;
-        hw.alive = w.alive;
-        const mw: HudMapWorm = model.wormsOnMap[i]!;
-        const p = game.wormView.renderPose(w.id)?.pos ?? w.pos;
-        mw.x = p[0];
-        mw.z = p[2];
-        mw.alive = w.alive;
-        const s = sources[i]!;
-        s.hp = w.hp;
-        s.alive = w.alive;
-      }
-      model.activeWormId = game.activeWormId;
-      model.cameraHeading = game.cameraRig.heading();
-      const cam = game.ctx.camera;
-      model.cameraXZ![0] = cam.position.x;
-      model.cameraXZ![1] = cam.position.z;
-      if (model.weapon!.id !== weaponId) {
-        model.weapon = { id: weaponId, name: weaponDisplayName(weaponId), ammo: -1, maxAmmo: -1 };
-      }
-      if (opts.demo) {
-        const t = frame / 60; // rendered frames, so screenshots are reproducible
-        model.turnTimeLeft = 45 - (t % 45);
-        demoWind[0] = 0.55 * Math.sin(0.4 + t * 0.05);
-        demoWind[1] = -0.55 * Math.cos(0.4 + t * 0.05);
-        model.wind = demoWind;
-      }
-      const mode = game.cameraRig.mode;
-      projectNameTags(cam, sources, renderPose, {
-        out: model.nameTags,
-        hideId: mode === 'follow' || mode === 'aim' ? game.activeWormId : null,
-        occluded,
-      });
-      hud.update(model);
+      const t0 = performance.now();
+      update();
+      const ms = performance.now() - t0;
+      msSum += ms;
+      msFrames++;
+      if (ms > msMax) msMax = ms;
+    },
+    stats() {
+      const r = { updateMsAvg: msFrames ? msSum / msFrames : 0, updateMsMax: msMax, frames: msFrames };
+      msSum = msMax = msFrames = 0;
+      return r;
     },
     setHeightmap(h) {
       hud.setHeightmap(h);

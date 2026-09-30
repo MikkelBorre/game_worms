@@ -80,7 +80,16 @@ export function projectNameTags(
   out.length = worms.length;
   for (let i = 0; i < worms.length; i++) {
     const src = worms[i]!;
-    const t = (out[i] ??= { id: 0, name: '', hp: 0, team: 0, screenX: 0, screenY: 0, visible: false, scale: 1 });
+    const t = (out[i] ??= {
+      id: 0,
+      name: '',
+      hp: 0,
+      team: 0,
+      screenX: 0,
+      screenY: 0,
+      visible: false,
+      scale: 1,
+    });
     t.id = src.id;
     t.name = src.name;
     t.hp = src.hp;

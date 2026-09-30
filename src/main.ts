@@ -34,6 +34,8 @@ async function main(): Promise<void> {
     game.hud = attachHud(game, ui, { demo: hudParam === 'demo' });
     game.hud.setHeightmap(game.terrain.heightmap(256)); // later reloads call it from Game.load()
     document.body.classList.add('hud-on');
+    // Debug-only handle for HUD cost measurements (tests use window.__game only).
+    if (debug) (window as unknown as { __hud?: unknown }).__hud = game.hud;
   }
   createDebugOverlay(game, ui, debug);
   if (!debug) showControlsHint(ui);

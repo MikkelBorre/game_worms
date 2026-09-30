@@ -9,7 +9,7 @@ import type { HeightmapData } from '../terrain/types';
 import { teamColor as defaultTeamColor } from '../render/palette';
 import { ClassSlot, el, hexCss, shade, StyleSlot, TextSlot } from './dom';
 import { GRAVESTONE_SVG, weaponIcon, WIND_ARROW_SVG, wormPortraitSvg } from './icons';
-import { Minimap } from './minimap';
+import { Minimap, type MinimapFrame } from './minimap';
 import { NameTagLayer, type NameTag } from './nameTags';
 import { WeaponMenu } from './weaponMenu';
 import { DEFAULT_WEAPON_MENU, type WeaponMenuItem } from './weapons';
@@ -104,6 +104,10 @@ interface RosterRow {
 interface RosterTeam {
   total: TextSlot;
   out: ClassSlot;
+  hasActive: ClassSlot;
+  /** Team HP bar in the header (only shown when the team is collapsed). */
+  bar: StyleSlot;
+  barKey: number;
 }
 
 class Roster {
@@ -126,12 +130,16 @@ class Roster {
     for (let t = 0; t < teams.length; t++) {
       const team = teams[t]!;
       let sum = 0;
+      let maxSum = 0;
       let alive = 0;
+      let hasActive = false;
       for (const w of team.worms) {
         const row = this.rows.get(w.id)!;
         const hp = w.alive ? Math.max(0, Math.ceil(w.hp)) : 0;
         sum += hp;
+        maxSum += w.maxHp;
         if (w.alive) alive++;
+        if (w.id === activeId) hasActive = true;
         const hpKey = w.alive ? hp : -2; // -2: dead (empty text, empty bar)
         if (hpKey !== row.hp || w.maxHp !== row.maxHp) {
           row.hp = hpKey;
@@ -149,6 +157,12 @@ class Roster {
       const rt = this.teams[t]!;
       rt.total.set(String(sum));
       rt.out.set(team.worms.length > 0 && alive === 0);
+      rt.hasActive.set(hasActive);
+      const barKey = Math.round((sum / Math.max(1, maxSum)) * 1000);
+      if (barKey !== rt.barKey) {
+        rt.barKey = barKey;
+        rt.bar.set(`scaleX(${barKey / 1000})`);
+      }
     }
   }
 
@@ -178,7 +192,14 @@ class Roster {
       const head = el('div', 'roster-team-head', block);
       el('span', 'roster-team-name', head, t.name);
       const total = el('span', 'roster-team-total', head);
-      this.teams.push({ total: new TextSlot(total), out: new ClassSlot(block, 'is-out') });
+      const teamBar = el('span', 'roster-team-bar', head);
+      this.teams.push({
+        total: new TextSlot(total),
+        out: new ClassSlot(block, 'is-out'),
+        hasActive: new ClassSlot(block, 'has-active'),
+        bar: new StyleSlot(el('span', 'roster-team-bar-fill', teamBar), 'transform'),
+        barKey: -1,
+      });
       for (const w of t.worms) {
         sig.push(w.id, w.name);
         count++;
@@ -207,7 +228,8 @@ class Roster {
       }
     }
     this.sig = sig;
-    // Shrink the list when many worms are in play so it never runs into the weapon card.
+    // Shrink the list when many worms are in play so it never runs into the weapon card. On short
+    // screens a crowded roster also collapses every team except the active one to a header + team HP bar.
     this.compact.set(count > 6 && count <= 10);
     this.tiny.set(count > 10);
   }
@@ -329,6 +351,7 @@ export function createHud(root: HTMLElement, opts: HudOptions = {}): Hud {
     opts.onSelectWeapon?.(id);
   });
   let visible = true;
+  const mapFrame: MinimapFrame = { worms: [], teamColor, activeWormId: null, heading: 0, fallbackXZ: null };
 
   const onKey = (e: KeyboardEvent) => {
     if (!visible || e.repeat) return;
@@ -347,13 +370,11 @@ export function createHud(root: HTMLElement, opts: HudOptions = {}): Hud {
       if (!visible) return;
       roster.update(m.teams, m.activeWormId);
       turn.update(m.turnTimeLeft, m.wind, m.cameraHeading);
-      minimap.update({
-        worms: m.wormsOnMap,
-        teamColor,
-        activeWormId: m.activeWormId,
-        heading: m.cameraHeading,
-        fallbackXZ: m.cameraXZ ?? null,
-      });
+      mapFrame.worms = m.wormsOnMap;
+      mapFrame.activeWormId = m.activeWormId;
+      mapFrame.heading = m.cameraHeading;
+      mapFrame.fallbackXZ = m.cameraXZ ?? null;
+      minimap.update(mapFrame);
       card.update(m.weapon);
       if (m.weapon && m.weapon.id !== selectedWeapon) {
         selectedWeapon = m.weapon.id;
