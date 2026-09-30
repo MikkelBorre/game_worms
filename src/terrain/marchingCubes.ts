@@ -148,8 +148,8 @@ export const PALETTE = {
   grass: hex(0x62bf45),
   grassAlt: hex(0x9ad155),
   grassDark: hex(0x479a3a),
-  rock: hex(0xa29380),
-  rockAlt: hex(0xb5a58e),
+  rock: hex(0x9e968a),
+  rockAlt: hex(0xb1a896),
   dirt: hex(0x8a6238),
   /** Surfaces this far (m) below the column's top surface count as covered (cave floors, under overhangs). */
   coveredDepth: 1.2,
