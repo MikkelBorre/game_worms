@@ -292,6 +292,12 @@ export class Worm {
     this.moveDir = [x, z];
   }
 
+  /** Drop held walk intent and a pending (double-tap) jump – the turn ended for this worm. */
+  stopInput(): void {
+    this.setMove([0, 0]);
+    this.jumpPendingTicks = 0;
+  }
+
   face(yaw: number): void {
     if (!this.s.alive || !Number.isFinite(yaw)) return;
     this.s.yaw = wrapAngle(yaw);

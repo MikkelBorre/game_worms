@@ -35,6 +35,7 @@ import {
   type Weapon,
   type WeaponContext,
 } from './weapons/registry';
+import { TurnSystem, type TurnEvents, type TurnState } from './turn';
 import { sanitizeWind, windFromSeed } from './wind';
 import {
   createWormControllers,
@@ -47,11 +48,12 @@ import {
 
 export type { WormAnimState, WormState } from './worm';
 export type { ProjectileState } from './projectile';
+export type { TurnPhase, TurnState } from './turn';
 export type { ExplosionResult, ExplosionHit } from './explosion';
 
 export const GRAVITY = WORM_GRAVITY;
 
-export interface SimEvents extends WormEvents {
+export interface SimEvents extends WormEvents, TurnEvents {
   wormSpawned: { id: number; team: number; pos: Vec3 };
   commandIgnored: { type: string; reason: string };
   /** A `fire` command was accepted (before the weapon's fire() runs). */
@@ -124,6 +126,12 @@ export class SimWorld {
   readonly worms: WormState[] = [];
   /** Plain live-projectile state read by render/UI (spawn order). Same objects as the internal Projectile.s. */
   readonly projectiles: ProjectileState[] = [];
+  /**
+   * Turn state read by render/UI (M4). Plain object, mutated in place every tick. `enabled` is false until a
+   * `startMatch` command; until then worms, weapons and wind behave as in free play.
+   */
+  readonly turn: TurnState;
+  private readonly turns: TurnSystem;
   private readonly wormById = new Map<number, Worm>();
   private readonly wormByCollider = new Map<number, Worm>();
   private readonly wormList: Worm[] = [];
@@ -148,6 +156,8 @@ export class SimWorld {
     this.muzzleProbe = new RAPIER.Ball(MUZZLE_PROBE_RADIUS);
     this.terrain = opts.terrain ?? null;
     this.wind = opts.wind ? sanitizeWind(opts.wind) : windFromSeed(opts.seed);
+    this.turns = new TurnSystem(this);
+    this.turn = this.turns.s;
   }
 
   /** Attach the terrain after construction (the TerrainSystem needs `sim.physics` to exist first). */
@@ -224,6 +234,7 @@ export class SimWorld {
     this.physics.step();
     this.postStepProjectiles();
     for (const w of this.wormList) w.postStep(this.waterLevel);
+    this.turns.update();
     this.tick++;
   }
 
@@ -243,6 +254,11 @@ export class SimWorld {
       }
       w.wake();
     }
+  }
+
+  /** Explosions scheduled for later ticks (worm death blasts, delayed weapons). */
+  get scheduledExplosions(): number {
+    return this.scheduled.length;
   }
 
   /** Controller-level access (knockback etc.). */
@@ -293,8 +309,18 @@ export class SimWorld {
         this.spawnWorm(cmd.team, cmd.pos);
         return;
       case 'fire':
-        this.fire(cmd);
+        if (this.fire(cmd)) this.turns.onFired();
         return;
+      case 'startMatch': {
+        const reason = this.turns.startMatch(cmd);
+        if (reason) this.events.emit('commandIgnored', { type: cmd.type, reason });
+        return;
+      }
+      case 'endTurn': {
+        const reason = this.turns.endTurn();
+        if (reason) this.events.emit('commandIgnored', { type: cmd.type, reason });
+        return;
+      }
       case 'setWind':
         this.wind = sanitizeWind(cmd.wind);
         this.events.emit('windChanged', { wind: [this.wind[0], this.wind[1]] });
@@ -311,6 +337,11 @@ export class SimWorld {
           this.events.emit('commandIgnored', { type: cmd.type, reason: 'worm is dead' });
           return;
         }
+        const blocked = this.turns.gate(cmd.type, cmd.wormId);
+        if (blocked) {
+          this.events.emit('commandIgnored', { type: cmd.type, reason: blocked });
+          return;
+        }
         if (cmd.type === 'move') w.setMove(cmd.dir);
         else if (cmd.type === 'jump') w.pressJump(cmd.kind);
         else w.face(cmd.yaw);
@@ -323,11 +354,17 @@ export class SimWorld {
     }
   }
 
-  private fire(cmd: Extract<Command, { type: 'fire' }>): void {
-    const ignore = (reason: string) => this.events.emit('commandIgnored', { type: 'fire', reason });
+  /** Apply a `fire` command. Returns true if it was accepted (weapon fired, ammo taken). */
+  private fire(cmd: Extract<Command, { type: 'fire' }>): boolean {
+    const ignore = (reason: string) => {
+      this.events.emit('commandIgnored', { type: 'fire', reason });
+      return false;
+    };
     const worm = this.wormById.get(cmd.wormId);
     if (!worm) return ignore(`no worm ${cmd.wormId}`);
     if (!worm.s.alive) return ignore('worm is dead');
+    const blocked = this.turns.gate('fire', cmd.wormId);
+    if (blocked) return ignore(blocked);
     const weapon = getWeapon(cmd.weapon);
     if (!weapon) return ignore(`unknown weapon ${cmd.weapon}`);
     const [ax, ay, az] = cmd.dir;
@@ -366,6 +403,7 @@ export class SimWorld {
       timerTicks,
     });
     weapon.fire(ctx);
+    return true;
   }
 
   /** Muzzle point in front of a worm, pulled back if terrain is in the way. */
@@ -630,6 +668,7 @@ export class SimWorld {
       waterLevel: this.waterLevel,
       wind: [this.wind[0], this.wind[1]] as Vec2,
       pendingTerrainEdits: this.pendingEdits,
+      turn: this.turns.snapshot(),
       worms: this.worms.map((w) => ({
         id: w.id,
         team: w.team,
@@ -655,7 +694,7 @@ export class SimWorld {
 
   /**
    * Deterministic 32-bit state hash (FNV-1a over tick, rng state, wind, per-worm quantized data: positions in mm,
-   * yaw in mrad, hp, alive; per-projectile id, position in mm and fuse). For desync detection between peers.
+   * yaw in mrad, hp, alive; per-projectile id, position in mm and fuse; turn state). For desync detection.
    */
   hash(): number {
     let h = 0x811c9dc5;
@@ -689,6 +728,7 @@ export class SimWorld {
       mix(p.fuseTicks ?? -1);
     }
     mix(this.scheduled.length);
+    this.turns.hashInto(mix);
     return h >>> 0;
   }
 
