@@ -1,11 +1,19 @@
+import type { Command } from '../core/commands';
 import type { Vec3 } from '../core/math';
 import type { Game } from '../game';
+import type { CameraMode } from '../render/camera';
 
 export interface GameTestApi {
   readonly ready: boolean;
   state(): ReturnType<Game['state']>;
   spawnWorm(opts: { team: number; pos: Vec3 }): void;
+  /** Spread teams over the island (seeded) – queued like spawnWorm. */
+  spawnTeams(teams: number, wormsPerTeam: number): void;
   fire(weapon: string, dir: Vec3, power: number): void;
+  /** Queue any serializable Command (move/jump/face/…) for the next tick. */
+  command(cmd: Command): void;
+  /** Deterministic sim state hash (desync checks). */
+  hash(): number;
   /** Run exactly n sim ticks synchronously, then render one frame. */
   advance(ticks: number): number;
   /** Rebuild the world from a new seed. Resolves when ready. */
@@ -15,7 +23,11 @@ export interface GameTestApi {
   /** Pause/resume real-time sim ticking (rendering continues). */
   pause(paused: boolean): void;
   camera(position: Vec3, target: Vec3): void;
-  cameraMode(mode: 'free' | 'overview'): void;
+  cameraMode(mode: CameraMode): void;
+  /** Top terrain surface y at (x, z). */
+  heightAt(x: number, z: number): number;
+  /** Make a worm the locally controlled one (follow camera + keyboard). */
+  selectWorm(id: number | null): void;
   /** Render n frames (no sim ticks) so time-based shaders advance. */
   renderFrames(n: number, dtSec?: number): void;
 }
@@ -34,7 +46,10 @@ export function installTestApi(game: Game): GameTestApi {
     },
     state: () => game.state(),
     spawnWorm: ({ team, pos }) => game.spawnWorm(team, pos),
+    spawnTeams: (teams, wormsPerTeam) => game.spawnTeams(teams, wormsPerTeam),
     fire: (weapon, dir, power) => game.command({ type: 'fire', weapon, dir, power }),
+    command: (cmd) => game.command(cmd),
+    hash: () => game.sim.hash(),
     advance: (ticks) => {
       game.loop.advance(ticks);
       return game.sim.tick;
@@ -50,6 +65,8 @@ export function installTestApi(game: Game): GameTestApi {
       game.ctx.render();
     },
     cameraMode: (mode) => game.cameraRig.setMode(mode),
+    selectWorm: (id) => game.setActiveWorm(id),
+    heightAt: (x, z) => game.terrain.heightAt(x, z),
     renderFrames: (n, dtSec = 1 / 60) => {
       for (let i = 0; i < n; i++) game.renderFrame(1, dtSec);
     },

@@ -50,6 +50,8 @@ Alle våben defineres i `src/sim/weapons/*` med fælles interface:
 - Orm med 0 HP eksploderer lille (radius 2 m) og bliver en gravsten.
 
 ## Visuel stil
+**Se `docs/ART_DIRECTION.md`** (golden hour, orm v2, HUD-layout, referencebilleder i `docs/art/`).
+
 Stiliseret low-poly/cartoon. Flad shading med let toon-ramp, mættede farver, blød tåge mod horisonten,
 animeret vandshader (enkle bølger + skum ved kysten). Ormene er procedurale (kapsel-krop + øjne + hjelm i holdfarve)
 – ingen eksterne assets nødvendige i MVP.

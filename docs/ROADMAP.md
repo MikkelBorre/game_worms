@@ -27,9 +27,13 @@ Hver milepæl er "done" når: typecheck + unit + e2e er grønne, `playtest`-skil
 - Skade, knockback, partikler, kamerarystelse, projektil-kamera.
 - Mål: eksplosion inkl. rebuild < 16 ms main thread.
 
+## Look-pass (kører parallelt med M3)
+- Golden hour-lys, orm v2 (S-krop, øjenlåg/bryn, army-hjelm m. goggles), instancerede græstotter/sten/blomster.
+- HUD-skal efter `docs/ART_DIRECTION.md`: holdliste m. portrætter + HP, våbenkort, rund minimap m. kompas, navneskilte.
+
 ## M4 – Tur-system og hotseat (1–2 dage)
 - Tur-state machine (select → move → aim → fire → retreat → settle → resolve).
-- Hold, HP-bars over orme, timer, vindindikator, våbenmenu, minimap, oversigtskamera.
+- Hold, HP-bars over orme, timer, vindindikator, våbenmenu, minimap, oversigtskamera (layout: `docs/ART_DIRECTION.md`).
 - Sejr/tab-skærm. Startmenu: hold, orme pr. hold, seed.
 - **Første spilbare version – deploy.**
 
