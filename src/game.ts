@@ -14,6 +14,7 @@ import { createSky, type Sky } from './render/sky';
 import { createTerrainView, type TerrainView } from './render/terrainView';
 import { createWater, type Water } from './render/water';
 import { WormView, type WormViewEvent } from './render/wormView';
+import type { GameHud } from './ui/gameHud';
 
 export interface GameOptions {
   seed: number;
@@ -42,6 +43,8 @@ export class Game {
   readonly controls: Controls;
   /** Worm controlled by the local player (turn system replaces this in M4). */
   activeWormId: number | null = null;
+  /** Optional HUD (attached by main.ts); updated after every rendered frame. */
+  hud: GameHud | null = null;
   private renderTime = 0;
   private lastAlpha = 1;
   private readonly target: { pos: Vec3; yaw: number } = { pos: [0, 0, 0], yaw: 0 };
@@ -107,9 +110,11 @@ export class Game {
     this.terrain = createTerrain({ seed, sim: this.sim });
     this.unsubMesh = this.terrain.onChunkMesh((m) => this.terrainView.apply(m));
     await this.terrain.generate();
-    this.water.setHeightmap(this.terrain.heightmap(256));
+    const heightmap = this.terrain.heightmap(256);
+    this.water.setHeightmap(heightmap);
+    this.hud?.setHeightmap(heightmap);
     const village = this.terrain.info()?.village;
-    this.scatter.setHeightmap(this.terrain.heightmap(256), seed, { avoid: village ? [village] : [] });
+    this.scatter.setHeightmap(heightmap, seed, { avoid: village ? [village] : [] });
     if (this.opts.teams > 0) this.spawnTeams(this.opts.teams, this.opts.wormsPerTeam);
     this.ready = true;
   }
@@ -211,6 +216,7 @@ export class Game {
       aimingId: this.cameraRig.mode === 'aim' ? this.activeWormId : null,
     });
     this.ctx.render();
+    this.hud?.update();
   }
 
   state() {

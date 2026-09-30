@@ -1,6 +1,21 @@
 * {
   box-sizing: border-box;
 }
+:root {
+  /* HUD look (docs/ART_DIRECTION.md "HUD-layout"). */
+  --hud-panel: rgba(15, 20, 30, 0.75);
+  --hud-panel-strong: rgba(15, 20, 30, 0.9);
+  --hud-line: rgba(255, 255, 255, 0.1);
+  --hud-radius: 12px;
+  --hud-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --hud-yellow: #ffd23f;
+  --hud-red: #ff5a4a;
+  --hud-gutter: 16px;
+  /* Bold rounded system stack – no web fonts needed. */
+  --hud-font:
+    ui-rounded, 'SF Pro Rounded', 'Nunito', 'Varela Round', 'Arial Rounded MT Bold', 'Segoe UI', system-ui,
+    -apple-system, sans-serif;
+}
 html,
 body {
   margin: 0;
@@ -50,6 +65,13 @@ body {
     monospace;
   border-radius: 4px;
 }
+/* With the HUD on, the debug overlay moves out of the roster's way. */
+body.hud-on #debug-overlay {
+  top: auto;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
 #fatal {
   position: fixed;
   inset: 20px;
@@ -59,15 +81,584 @@ body {
   white-space: pre-wrap;
   z-index: 10;
 }
+
+/* Controls hint (normal play) --------------------------------------------------------------------- */
 #controls-hint {
   position: absolute;
-  bottom: 12px;
+  bottom: var(--hud-gutter);
   left: 50%;
   transform: translateX(-50%);
-  padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 13px;
-  border-radius: 6px;
+  width: max-content;
+  max-width: min(56vw, 820px);
+  padding: 7px 14px;
+  background: var(--hud-panel);
+  color: rgba(255, 255, 255, 0.92);
+  font: 600 13px/1.75 var(--hud-font);
+  text-align: center;
+  border-radius: var(--hud-radius);
+  box-shadow: var(--hud-shadow);
+}
+#controls-hint span {
   white-space: nowrap;
+}
+#controls-hint b {
+  display: inline-block;
+  padding: 0 6px;
+  line-height: 1.5;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--hud-yellow);
+  font-weight: 800;
+}
+
+/* ================================================================================================ */
+/* HUD (all sizes in em so the media queries at the end scale everything)                           */
+/* ================================================================================================ */
+#hud {
+  position: absolute;
+  inset: 0;
+  font-family: var(--hud-font);
+  font-size: 16px;
+  color: #fff;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+#hud[hidden],
+#hud [hidden] {
+  display: none !important;
+}
+#hud svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hud-panel {
+  background: var(--hud-panel);
+  border-radius: var(--hud-radius);
+  box-shadow: var(--hud-shadow);
+  border: 1px solid var(--hud-line);
+}
+
+/* Roster (top left) ------------------------------------------------------------------------------ */
+.hud-roster {
+  position: absolute;
+  top: var(--hud-gutter);
+  left: var(--hud-gutter);
+  width: 13.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+}
+.hud-roster.is-compact {
+  font-size: 0.86em;
+  gap: 0.45em;
+}
+.hud-roster.is-tiny {
+  font-size: 0.72em;
+  gap: 0.35em;
+}
+.roster-team {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28em;
+}
+.roster-team-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: flex-start;
+  gap: 0.6em;
+  padding: 0.12em 0.6em 0.12em 0.45em;
+  font-size: 0.68em;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--hud-panel);
+  border-left: 0.35em solid var(--team);
+  border-radius: 6px;
+}
+.roster-team-total {
+  order: 2; /* after the (collapsed-only) team bar */
+  color: var(--team-light);
+  font-variant-numeric: tabular-nums;
+}
+.roster-team-bar {
+  display: none;
+  order: 1;
+  width: 5em;
+  height: 0.5em;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.roster-team-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(var(--team-light), var(--team));
+  transform-origin: 0 50%;
+  transition: transform 0.35s ease-out;
+}
+/* Crowded roster on a short screen: non-active teams collapse to header + team HP bar. */
+@media (max-height: 820px) {
+  .hud-roster.is-tiny {
+    font-size: 0.86em;
+  }
+  .hud-roster.is-tiny .roster-team:not(.has-active) .roster-worm {
+    display: none;
+  }
+  .hud-roster.is-tiny .roster-team:not(.has-active) .roster-team-head {
+    align-self: stretch;
+    padding: 0.35em 0.7em 0.35em 0.55em;
+    font-size: 0.8em;
+  }
+  .hud-roster.is-tiny .roster-team:not(.has-active) .roster-team-bar {
+    display: block;
+    flex: 1;
+  }
+}
+.roster-team.is-out .roster-team-head {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.roster-worm {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.22em 0.65em 0.22em 0.22em;
+  background: var(--hud-panel);
+  border: 2px solid transparent;
+  border-radius: 999px var(--hud-radius) var(--hud-radius) 999px;
+  box-shadow: var(--hud-shadow);
+  transition:
+    transform 0.18s ease-out,
+    border-color 0.18s,
+    background-color 0.18s;
+}
+.roster-worm.is-active {
+  border-color: var(--hud-yellow);
+  background: var(--hud-panel-strong);
+  transform: translateX(0.4em);
+}
+.roster-portrait {
+  flex: none;
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+.roster-worm.is-active .roster-portrait {
+  box-shadow: 0 0 0 2px var(--hud-yellow);
+}
+.roster-info {
+  flex: 1;
+  min-width: 0;
+}
+.roster-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4em;
+  font-size: 0.9em;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.roster-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.roster-hp {
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.roster-bar {
+  height: 0.42em;
+  margin-top: 0.22em;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.roster-bar-fill {
+  height: 100%;
+  background: linear-gradient(var(--team-light), var(--team));
+  border-radius: inherit;
+  transform-origin: 0 50%;
+  transition: transform 0.35s ease-out;
+}
+.roster-worm.is-dead {
+  opacity: 0.55;
+  filter: grayscale(1);
+  box-shadow: none;
+}
+
+/* Turn timer + wind (top centre) ----------------------------------------------------------------- */
+.hud-turn {
+  position: absolute;
+  top: var(--hud-gutter);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 0.5em;
+}
+.turn-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.75em 0.2em 0.6em;
+  font-size: 1.55em;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.turn-timer-icon {
+  width: 0.9em;
+  height: 0.9em;
+  color: var(--hud-yellow);
+}
+.turn-timer.is-urgent {
+  color: var(--hud-red);
+  animation: hud-pulse 1s ease-in-out infinite;
+}
+.turn-timer.is-urgent .turn-timer-icon {
+  color: var(--hud-red);
+}
+@keyframes hud-pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+.turn-wind {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.3em 0.8em;
+  font-weight: 800;
+}
+.turn-wind-label {
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.turn-wind-arrow {
+  width: 1.6em;
+  height: 1.6em;
+  color: var(--hud-yellow);
+  transition: transform 0.25s ease-out;
+}
+.turn-wind-bar {
+  width: 4em;
+  height: 0.45em;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.turn-wind-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8fe3ff, var(--hud-yellow));
+  transform-origin: 0 50%;
+  transition: transform 0.25s ease-out;
+}
+.turn-wind-text {
+  min-width: 1.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Minimap (top right) ---------------------------------------------------------------------------- */
+.hud-minimap {
+  position: absolute;
+  top: var(--hud-gutter);
+  right: var(--hud-gutter);
+  width: 11em;
+  height: 11em;
+  border-radius: 50%;
+  box-shadow: var(--hud-shadow);
+}
+.mm-disc {
+  position: absolute;
+  inset: 0.75em;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #0c408c;
+}
+.mm-map,
+.mm-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mm-disc::after {
+  /* soft inner vignette so the map sits "under" the ring */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0.9em rgba(0, 0, 0, 0.5);
+}
+.mm-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.8em solid var(--hud-panel-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.mm-ring::before {
+  /* tick marks every 15° on the ring */
+  content: '';
+  position: absolute;
+  inset: -0.8em;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.3) 0 1.2deg, transparent 1.2deg 15deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 88%, #000 89%, #000 95%, transparent 96%);
+  mask: radial-gradient(closest-side, transparent 88%, #000 89%, #000 95%, transparent 96%);
+}
+.mm-dir {
+  position: absolute;
+  width: 1.5em;
+  height: 1.5em;
+  margin: -0.75em 0 0 -0.75em;
+  display: grid;
+  place-items: center;
+  font-size: 0.75em;
+  font-weight: 900;
+  line-height: 1;
+  border-radius: 50%;
+  background: var(--hud-panel-strong);
+}
+.mm-n {
+  left: 50%;
+  top: -0.53em;
+  color: var(--hud-yellow);
+}
+.mm-s {
+  left: 50%;
+  top: calc(100% + 0.53em);
+}
+.mm-e {
+  left: calc(100% + 0.53em);
+  top: 50%;
+}
+.mm-w {
+  left: -0.53em;
+  top: 50%;
+}
+
+/* Weapon card (bottom left) ---------------------------------------------------------------------- */
+.hud-weapon {
+  position: absolute;
+  left: var(--hud-gutter);
+  bottom: var(--hud-gutter);
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  min-width: 12em;
+  padding: 0.5em 1.2em 0.5em 0.5em;
+}
+.weapon-icon {
+  flex: none;
+  width: 3.6em;
+  height: 3.6em;
+  padding: 0.3em;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.weapon-name {
+  font-size: 1.15em;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.weapon-ammo {
+  margin-top: 0.1em;
+  font-size: 1.05em;
+  font-weight: 800;
+  color: var(--hud-yellow);
+  font-variant-numeric: tabular-nums;
+}
+.hud-weapon.is-empty .weapon-ammo {
+  color: var(--hud-red);
+}
+.weapon-key {
+  position: absolute;
+  top: -0.6em;
+  right: -0.5em;
+  padding: 0.15em 0.5em;
+  font-size: 0.7em;
+  font-weight: 900;
+  color: #1b1f2a;
+  text-shadow: none;
+  background: var(--hud-yellow);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Weapon menu (Q) -------------------------------------------------------------------------------- */
+.hud-weapon-menu {
+  position: absolute;
+  right: var(--hud-gutter);
+  bottom: var(--hud-gutter);
+  width: 16.5em;
+  padding: 0.6em;
+  pointer-events: auto;
+  background: rgba(15, 20, 30, 0.85);
+  border-radius: 14px;
+  animation: hud-pop 0.14s ease-out;
+  transform-origin: 100% 100%;
+}
+@keyframes hud-pop {
+  /* scale-only: the panel is fully readable even if the first animation frame is what gets painted */
+  from {
+    transform: scale(0.94);
+  }
+}
+.wm-tabs {
+  display: flex;
+  gap: 0.25em;
+  padding: 0.2em;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+.wm-tab {
+  flex: 1;
+  padding: 0.4em 0.2em;
+  font: inherit;
+  font-size: 0.78em;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.55);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+.wm-tab.is-active {
+  color: #1b1f2a;
+  background: var(--hud-yellow);
+  text-shadow: none;
+}
+.wm-tab:disabled {
+  cursor: default;
+}
+.wm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45em;
+  margin-top: 0.55em;
+}
+.wm-item {
+  aspect-ratio: 1;
+  padding: 0.5em;
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    transform 0.12s;
+}
+.wm-item:not(:disabled):hover,
+.wm-item:focus-visible {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+  outline: none;
+}
+.wm-item.is-selected {
+  border-color: var(--hud-yellow);
+  background: rgba(255, 210, 63, 0.14);
+  box-shadow: 0 0 0.7em rgba(255, 210, 63, 0.35);
+}
+.wm-item.is-locked {
+  cursor: not-allowed;
+  opacity: 0.35;
+  filter: grayscale(0.7);
+}
+.wm-title {
+  min-height: 1.3em;
+  margin-top: 0.5em;
+  font-size: 0.9em;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Name tags --------------------------------------------------------------------------------------- */
+.hud-tags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.hud-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  visibility: hidden;
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+.hud-tag.is-visible {
+  visibility: visible;
+}
+.tag-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  padding: 0.12em 0.6em;
+  font-size: 0.82em;
+  font-weight: 800;
+  white-space: nowrap;
+  background: rgba(15, 20, 30, 0.78);
+  border: 2px solid var(--team);
+  border-radius: 999px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+.tag-hp {
+  color: var(--team-light);
+  font-variant-numeric: tabular-nums;
+}
+.hud-tag.is-low .tag-hp {
+  color: var(--hud-red);
+}
+.hud-tag.is-active .tag-pill {
+  border-color: var(--hud-yellow);
+}
+.tag-marker {
+  width: 0;
+  height: 0;
+  margin-top: 0.18em;
+  border-left: 0.42em solid transparent;
+  border-right: 0.42em solid transparent;
+  border-top: 0.55em solid var(--team);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+/* Responsive: every HUD size is em-based, so changing the root size scales the whole HUD ---------- */
+@media (min-width: 1700px) and (min-height: 950px) {
+  #hud {
+    font-size: 18px;
+  }
+}
+@media (max-width: 1100px), (max-height: 680px) {
+  #hud {
+    font-size: 14px;
+  }
+}
+@media (max-width: 800px), (max-height: 520px) {
+  :root {
+    --hud-gutter: 10px;
+  }
+  #hud {
+    font-size: 12px;
+  }
+  #controls-hint {
+    display: none;
+  }
 }
