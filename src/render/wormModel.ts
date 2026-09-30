@@ -3,15 +3,16 @@ import { getToonRamp } from './materials';
 import { GRAVE_COLORS, WORM_COLORS, teamColor } from './palette';
 
 /**
- * Procedural worm + gravestone geometry. No external assets.
+ * Procedural worm (v2) + gravestone geometry. No external assets.
  *
- * Model space: feet (ground contact) at y = 0, front faces +Z, ~1.03 m tall, ~0.56 m wide.
- * The whole worm (body tube, eyes, pupils, mouth, helmet) is ONE skinned BufferGeometry with vertex
- * colours, so a worm costs one draw call (+ one for the optional outline hull, + one shadow pass).
- * Geometry is cached per team (helmet colour is baked into the vertex colours).
+ * Model space: feet (ground contact) at y = 0, front faces +Z, ~1.08 m tall incl. helmet, long S-shaped
+ * body whose thick tail trails ~0.8 m behind. The whole worm (body, eyes, lids, brows, mouth, army helmet
+ * with goggles and team strap) is ONE skinned BufferGeometry with vertex colours, so a worm costs one draw
+ * call (+ one for the outline hull, + one shadow pass). Geometry is cached per team (strap colour is baked
+ * into the vertex colours). Facial expressions are driven by bones (lids, brows, mouth) – see wormView.ts.
  */
 
-/** Bone indices into WormRig.bones. */
+/** Bone indices into WormRig.bones. Indices 0–9 are unchanged from v1. */
 export const BONE = {
   root: 0,
   base: 1,
@@ -23,69 +24,77 @@ export const BONE = {
   eyeR: 7,
   pupilL: 8,
   pupilR: 9,
+  tailTip: 10,
+  /** Upper eyelids: rotation.x closes (+) / opens (−) around the eye centre, rotation.z slants. */
+  lidL: 11,
+  lidR: 12,
+  /** Brows: position offset raises/lowers, rotation.z slants. */
+  browL: 13,
+  browR: 14,
+  /** Mouth: scale.y 1 = smile, ~0 = grim line; rotation.z = π turns it into a frown. */
+  mouth: 15,
 } as const;
-const BONE_COUNT = 10;
+const BONE_COUNT = 16;
 
 /** Shape tweakables (metres, model space). */
 export const WORM_MODEL = {
-  /** Body spine control points [y, z], tail tip → top of head. */
+  /** Body spine control points [y, z], tail tip → top of head. A lying S: tail on the ground → upright. */
   spine: [
-    [0.05, -0.56],
-    [0.068, -0.46],
-    [0.105, -0.34],
-    [0.165, -0.215],
-    [0.255, -0.09],
-    [0.4, -0.012],
-    [0.56, 0],
-    [0.72, 0],
-    [0.97, 0],
+    [0.085, -0.8],
+    [0.095, -0.68],
+    [0.11, -0.54],
+    [0.14, -0.39],
+    [0.19, -0.23],
+    [0.29, -0.09],
+    [0.44, -0.005],
+    [0.58, 0.025],
+    [0.72, 0.02],
+    [0.86, 0.0],
+    [0.985, -0.01],
   ] as ReadonlyArray<readonly [number, number]>,
   /** Tube radius at each spine control point (first/last are the rounded tips). */
-  radii: [0, 0.062, 0.105, 0.162, 0.222, 0.262, 0.266, 0.25, 0] as readonly number[],
-  radialSegments: 16,
-  ringsPerSegment: 6,
-  /** Arc-length period (m) and strength of the darker segment bands on the lower body. */
-  segmentPeriod: 0.13,
-  segmentStrength: 0.85,
-  /** Segment bands stop below this height (keeps the face clean). */
-  segmentMaxY: 0.5,
-  eyeRadius: 0.118,
-  eyeX: 0.098,
-  eyeY: 0.685,
-  eyeZ: 0.185,
-  pupilRadius: 0.052,
-  helmetY: 0.8,
-  helmetRadius: 0.285,
-  helmetSquash: 0.78,
+  radii: [0, 0.085, 0.105, 0.14, 0.18, 0.222, 0.248, 0.245, 0.24, 0.232, 0] as readonly number[],
+  radialSegments: 14,
+  ringsPerSegment: 5,
+  /** Arc-length period (m) and colour strength of the ring creases on the lower body and tail. */
+  segmentPeriod: 0.105,
+  segmentStrength: 0.75,
+  /** Radial depth (fraction of the radius) of the ring creases – they show in the silhouette. */
+  segmentCrease: 0.06,
+  /** Segment creases stop below this height (keeps the face clean). */
+  segmentMaxY: 0.47,
+  eyeRadius: 0.116,
+  eyeX: 0.094,
+  eyeY: 0.695,
+  /** How far the eye centre sits behind the body's front surface (smaller = more bulging). */
+  eyeInset: 0.062,
+  pupilRadius: 0.05,
+  /** Upper lid shell radius relative to the eye radius. */
+  lidScale: 1.1,
+  browLength: 0.078,
+  browThickness: 0.018,
+  /** Brow height above the eye centre and forward offset from the eye centre. */
+  browRise: 0.12,
+  browForward: 0.074,
+  helmetY: 0.865,
+  helmetZ: -0.012,
+  helmetRadius: 0.272,
+  helmetSquash: 0.8,
   /** Tilt back (radians) so the brim rises at the front and the eyes stay visible. */
-  helmetTilt: -0.16,
-  mouthY: 0.5,
+  helmetTilt: -0.15,
+  /** Team strap (goggle band) height range on the helmet dome, in helmet-local y. */
+  strapY: [0.028, 0.098] as readonly [number, number],
+  /** Half-width (radians of azimuth) of the team stripe running over the top of the helmet. */
+  stripeHalfWidth: 0.2,
+  goggleX: 0.084,
+  goggleRadius: 0.05,
+  mouthY: 0.575,
   /** Cartoon outline thickness (m) of the inverted hull. 0 disables the outline mesh. */
   outlineWidth: 0.016,
 };
 
-/** Bone rest positions in model space and parents. */
-const BONE_REST: ReadonlyArray<{ pos: readonly [number, number, number]; parent: number }> = [
-  { pos: [0, 0, 0], parent: -1 }, // root
-  { pos: [0, 0.27, -0.04], parent: BONE.root }, // base
-  { pos: [0, 0.2, -0.12], parent: BONE.base }, // tail
-  { pos: [0, 0.45, 0], parent: BONE.base }, // mid
-  { pos: [0, 0.6, 0], parent: BONE.mid }, // upper
-  { pos: [0, 0.74, 0], parent: BONE.upper }, // head
-  { pos: [WORM_MODEL.eyeX, WORM_MODEL.eyeY, WORM_MODEL.eyeZ], parent: BONE.head }, // eyeL (+X = worm's left)
-  { pos: [-WORM_MODEL.eyeX, WORM_MODEL.eyeY, WORM_MODEL.eyeZ], parent: BONE.head }, // eyeR
-  { pos: [WORM_MODEL.eyeX, WORM_MODEL.eyeY, WORM_MODEL.eyeZ], parent: BONE.eyeL }, // pupilL
-  { pos: [-WORM_MODEL.eyeX, WORM_MODEL.eyeY, WORM_MODEL.eyeZ], parent: BONE.eyeR }, // pupilR
-];
-
-/** Skin weight anchors along the spine parameter u ∈ [0, spine.length - 1]. */
-const SPINE_ANCHORS: ReadonlyArray<readonly [bone: number, u: number]> = [
-  [BONE.tail, 1.6],
-  [BONE.base, 3.8],
-  [BONE.mid, 5.0],
-  [BONE.upper, 6.0],
-  [BONE.head, 6.9],
-];
+/** Rest lid angle (rotation.x, rad) for a neutral open eye; the expression code offsets from here. */
+export const LID_OPEN = -0.85;
 
 // ---------------------------------------------------------------------------------------------
 
@@ -161,6 +170,67 @@ function radiusAt(u: number): number {
   return r[k]! + (r[k + 1]! - r[k]!) * smoothstep(0, 1, f);
 }
 
+// Spine curve shared by the body mesh and the face placement.
+const spineCurve = new THREE.CatmullRomCurve3(
+  WORM_MODEL.spine.map(([y, z]) => new THREE.Vector3(0, y, z)),
+  false,
+  'centripetal',
+);
+
+/** Front (+Z) surface z of the upper body at height y. */
+function frontZAt(y: number): number {
+  const n = WORM_MODEL.spine.length - 1;
+  const p = new THREE.Vector3();
+  let best = 0.5;
+  let bestD = Infinity;
+  for (let i = 0; i <= 400; i++) {
+    const t = 0.5 + (i / 400) * 0.5;
+    spineCurve.getPoint(t, p);
+    const d = Math.abs(p.y - y);
+    if (d < bestD) {
+      bestD = d;
+      best = t;
+    }
+  }
+  spineCurve.getPoint(best, p);
+  return p.z + radiusAt(best * n);
+}
+
+const EYE_Z = frontZAt(WORM_MODEL.eyeY) - WORM_MODEL.eyeInset;
+const MOUTH_Z = frontZAt(WORM_MODEL.mouthY);
+const BROW_Y = WORM_MODEL.eyeY + WORM_MODEL.browRise;
+const BROW_Z = EYE_Z + WORM_MODEL.browForward;
+
+/** Bone rest positions in model space and parents. */
+const BONE_REST: ReadonlyArray<{ pos: readonly [number, number, number]; parent: number }> = [
+  { pos: [0, 0, 0], parent: -1 }, // root
+  { pos: [0, 0.3, -0.06], parent: BONE.root }, // base
+  { pos: [0, 0.16, -0.34], parent: BONE.base }, // tail
+  { pos: [0, 0.47, 0.01], parent: BONE.base }, // mid
+  { pos: [0, 0.61, 0.025], parent: BONE.mid }, // upper
+  { pos: [0, 0.76, 0.01], parent: BONE.upper }, // head
+  { pos: [WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.head }, // eyeL (+X = worm's left)
+  { pos: [-WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.head }, // eyeR
+  { pos: [WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.eyeL }, // pupilL
+  { pos: [-WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.eyeR }, // pupilR
+  { pos: [0, 0.1, -0.64], parent: BONE.tail }, // tailTip
+  { pos: [WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.head }, // lidL
+  { pos: [-WORM_MODEL.eyeX, WORM_MODEL.eyeY, EYE_Z], parent: BONE.head }, // lidR
+  { pos: [WORM_MODEL.eyeX + 0.006, BROW_Y, BROW_Z], parent: BONE.head }, // browL
+  { pos: [-WORM_MODEL.eyeX - 0.006, BROW_Y, BROW_Z], parent: BONE.head }, // browR
+  { pos: [0, WORM_MODEL.mouthY, MOUTH_Z], parent: BONE.upper }, // mouth
+];
+
+/** Skin weight anchors along the spine parameter u ∈ [0, spine.length - 1]. */
+const SPINE_ANCHORS: ReadonlyArray<readonly [bone: number, u: number]> = [
+  [BONE.tailTip, 0.8],
+  [BONE.tail, 2.8],
+  [BONE.base, 4.8],
+  [BONE.mid, 6.2],
+  [BONE.upper, 7.2],
+  [BONE.head, 8.3],
+];
+
 /** Two-bone skin weights along the spine: [bone0, bone1, weight of bone1]. */
 function spineWeights(u: number): [number, number, number] {
   const a = SPINE_ANCHORS;
@@ -177,9 +247,8 @@ function spineWeights(u: number): [number, number, number] {
 
 function addBody(b: GeoBuilder): void {
   const M = WORM_MODEL;
-  const pts = M.spine.map(([y, z]) => new THREE.Vector3(0, y, z));
-  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-  const nSeg = pts.length - 1;
+  const curve = spineCurve;
+  const nSeg = M.spine.length - 1;
   const rings = nSeg * M.ringsPerSegment + 1;
   const radial = M.radialSegments;
   const skin = new THREE.Color(WORM_COLORS.skin);
@@ -198,7 +267,7 @@ function addBody(b: GeoBuilder): void {
   const c = new THREE.Color();
   const base = b.count;
 
-  // Arc length from the tail tip, for the segment bands.
+  // Arc length from the tail tip, for the segment creases.
   let arc = 0;
   const prev = curve.getPoint(0);
   for (let i = 0; i < rings; i++) {
@@ -208,7 +277,6 @@ function addBody(b: GeoBuilder): void {
     prev.copy(P);
     curve.getTangent(Math.min(0.999, Math.max(0.001, t)), T).normalize();
     const u = t * nSeg;
-    const r = radiusAt(u);
     // dr/ds for analytic normals (caps → normal tends to ±T).
     const e = 1e-3;
     const t0 = Math.max(0, t - e);
@@ -220,18 +288,22 @@ function addBody(b: GeoBuilder): void {
     slope = Math.max(-40, Math.min(40, slope));
     Bv.set(0, T.z, -T.y); // T × X, perpendicular to T in the YZ plane
     const [b0, b1, w1] = spineWeights(u);
+    // Ring creases on the lower body and tail (not on the rounded tail cap).
     const band = 0.5 + 0.5 * Math.cos((arc / M.segmentPeriod) * Math.PI * 2);
-    const bandW =
-      Math.pow(band, 6) * M.segmentStrength * (1 - smoothstep(M.segmentMaxY - 0.08, M.segmentMaxY, P.y));
+    const lower = (1 - smoothstep(M.segmentMaxY - 0.08, M.segmentMaxY, P.y)) * smoothstep(0.6, 1.2, u);
+    const bandW = Math.pow(band, 5) * lower;
+    const r = radiusAt(u) * (1 - M.segmentCrease * bandW);
     for (let j = 0; j <= radial; j++) {
       const th = (j / radial) * Math.PI * 2;
       R.copy(X).multiplyScalar(Math.cos(th)).addScaledVector(Bv, Math.sin(th));
       V.copy(P).addScaledVector(R, r);
       N.copy(R).addScaledVector(T, -slope).normalize();
+      // Lighter belly: the front of the upright part and the underside of the tail.
       const front = smoothstep(0.1, 0.85, R.z) * smoothstep(0.3, 0.8, Math.abs(T.y));
+      const under = smoothstep(0.2, 0.8, -R.y) * (1 - smoothstep(0.4, 0.8, Math.abs(T.y)));
       c.copy(skin)
-        .lerp(belly, front * 0.55)
-        .lerp(segment, bandW);
+        .lerp(belly, Math.max(front, under) * 0.6)
+        .lerp(segment, bandW * M.segmentStrength);
       b.vertex(V, N, c, b0, b1, w1);
     }
   }
@@ -265,59 +337,112 @@ function addFace(b: GeoBuilder): void {
   const p = new THREE.Vector3();
   const white = new THREE.Color(WORM_COLORS.eyeWhite);
   const black = new THREE.Color(WORM_COLORS.pupil);
+  const skin = new THREE.Color(WORM_COLORS.skin);
+  const brow = new THREE.Color(WORM_COLORS.brow);
   for (const side of [1, -1]) {
     const eyeBone = side > 0 ? BONE.eyeL : BONE.eyeR;
     const pupilBone = side > 0 ? BONE.pupilL : BONE.pupilR;
+    const lidBone = side > 0 ? BONE.lidL : BONE.lidR;
+    const browBone = side > 0 ? BONE.browL : BONE.browR;
     const ex = side * M.eyeX;
-    // Eye white: slightly tall ellipsoid.
-    m.compose(p.set(ex, M.eyeY, M.eyeZ), q.identity(), s.set(1, 1.12, 0.95));
+    // Eye white: nearly round so the (rotating) lid shell hugs it.
+    m.compose(p.set(ex, M.eyeY, EYE_Z), q.identity(), s.set(1, 1.07, 0.96));
     b.addRigid(new THREE.SphereGeometry(M.eyeRadius, 16, 12), m, white, eyeBone);
     // Pupil: flattened sphere on the eye's front, looking a touch inward (cute).
-    const dir = new THREE.Vector3(-side * 0.14, 0.04, 1).normalize();
+    const dir = new THREE.Vector3(-side * 0.12, 0.02, 1).normalize();
     q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-    p.set(ex, M.eyeY, M.eyeZ).addScaledVector(dir, M.eyeRadius * 0.93 - M.pupilRadius * 0.25);
+    p.set(ex, M.eyeY, EYE_Z).addScaledVector(dir, M.eyeRadius * 0.93 - M.pupilRadius * 0.25);
     m.compose(p, q, s.set(1, 1.15, 0.5));
     b.addRigid(new THREE.SphereGeometry(M.pupilRadius, 12, 8), m, black, pupilBone);
     // Specular highlight.
     const hp = p.clone().add(new THREE.Vector3(side * 0.012 + 0.012, 0.022, 0.024));
     m.compose(hp, q.identity(), s.set(1, 1, 0.6));
     b.addRigid(new THREE.SphereGeometry(0.015, 6, 4), m, white, pupilBone);
+    // Upper lid: skin-coloured top-hemisphere shell around the eye, pivoting on the eye centre.
+    // Bind pose covers the top half; the view rotates it back to LID_OPEN (or down to blink).
+    m.compose(p.set(ex, M.eyeY, EYE_Z), q.identity(), s.setScalar(1));
+    b.addRigid(
+      new THREE.SphereGeometry(M.eyeRadius * M.lidScale, 16, 5, 0, Math.PI * 2, 0, Math.PI / 2),
+      m,
+      skin,
+      lidBone,
+    );
+    // Brow: small dark capsule lying along X above the eye, wrapped a little around the head.
+    m.compose(
+      p.set(ex + side * 0.006, BROW_Y, BROW_Z),
+      q.setFromEuler(new THREE.Euler(0, side * 0.3, Math.PI / 2, 'YXZ')),
+      s.set(1, 1, 0.75),
+    );
+    b.addRigid(new THREE.CapsuleGeometry(M.browThickness, M.browLength, 3, 8), m, brow, browBone);
   }
-  // Mouth: half torus (smile) on the body front.
+  // Mouth: half torus (smile) on the body front, on its own bone for expressions.
   const mouth = new THREE.Color(WORM_COLORS.mouth);
-  const bodyR = radiusAt(5.8);
-  q.setFromEuler(new THREE.Euler(-0.25, 0, Math.PI));
-  m.compose(p.set(0, M.mouthY, bodyR - 0.006), q, s.set(1, 0.8, 1));
-  b.addRigid(new THREE.TorusGeometry(0.052, 0.012, 5, 12, Math.PI), m, mouth, BONE.mid, BONE.upper, 0.5);
+  q.setFromEuler(new THREE.Euler(-0.3, 0, Math.PI));
+  m.compose(p.set(0, M.mouthY, MOUTH_Z - 0.008), q, s.set(1, 0.8, 1));
+  b.addRigid(new THREE.TorusGeometry(0.05, 0.012, 5, 12, Math.PI), m, mouth, BONE.mouth);
 }
 
 function addHelmet(b: GeoBuilder, team: number): void {
   const M = WORM_MODEL;
-  const col = new THREE.Color(teamColor(team));
-  const rim = col.clone().multiplyScalar(WORM_COLORS.helmetRimShade);
+  const r = M.helmetRadius;
+  const sq = M.helmetSquash;
+  const shell = new THREE.Color(WORM_COLORS.helmet);
+  const dark = new THREE.Color(WORM_COLORS.helmetDark);
+  const strap = new THREE.Color(teamColor(team)).multiplyScalar(WORM_COLORS.teamStrapShade);
+  const rim = new THREE.Color(WORM_COLORS.goggleRim);
+  const lens = new THREE.Color(WORM_COLORS.goggleLens);
   const m = new THREE.Matrix4();
-  const tilt = new THREE.Matrix4().makeRotationX(M.helmetTilt);
-  const place = new THREE.Matrix4().makeTranslation(0, M.helmetY, -0.015).multiply(tilt);
+  const place = new THREE.Matrix4()
+    .makeTranslation(0, M.helmetY, M.helmetZ)
+    .multiply(new THREE.Matrix4().makeRotationX(M.helmetTilt));
+  const squash = new THREE.Matrix4().makeScale(1, sq, 1);
   // Dome.
-  m.copy(place).multiply(new THREE.Matrix4().makeScale(1, M.helmetSquash, 1));
+  m.copy(place).multiply(squash);
+  b.addRigid(new THREE.SphereGeometry(r, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), m, shell, BONE.head);
+  // Team stripe over the top, front to back (reads from above and at distance).
+  for (const phi of [Math.PI / 2, (Math.PI * 3) / 2]) {
+    b.addRigid(
+      new THREE.SphereGeometry(
+        r * 1.012,
+        3,
+        8,
+        phi - M.stripeHalfWidth,
+        M.stripeHalfWidth * 2,
+        0,
+        Math.PI / 2 - 0.12,
+      ),
+      m,
+      strap,
+      BONE.head,
+    );
+  }
+  // Brim: flared ring.
+  m.copy(place).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+  b.addRigid(new THREE.TorusGeometry(r * 1.02, 0.034, 6, 28), m, dark, BONE.head);
+  // Team strap (goggle band): open cone frustum hugging the squashed dome.
+  const [y0, y1] = M.strapY;
+  const ringR = (y: number) => r * Math.sqrt(Math.max(0, 1 - (y / (sq * r)) ** 2));
+  m.copy(place).multiply(new THREE.Matrix4().makeTranslation(0, (y0 + y1) / 2, 0));
   b.addRigid(
-    new THREE.SphereGeometry(M.helmetRadius, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.CylinderGeometry(ringR(y1) * 1.035, ringR(y0) * 1.035, y1 - y0, 24, 1, true),
     m,
-    col,
+    strap,
     BONE.head,
   );
-  // Brim.
-  m.copy(place).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
-  b.addRigid(new THREE.TorusGeometry(M.helmetRadius, 0.036, 6, 28), m, rim, BONE.head);
-  // Little top knob.
-  m.copy(place).multiply(
-    new THREE.Matrix4().compose(
-      new THREE.Vector3(0, M.helmetRadius * M.helmetSquash - 0.005, 0),
-      new THREE.Quaternion(),
-      new THREE.Vector3(1, 0.55, 1),
-    ),
-  );
-  b.addRigid(new THREE.SphereGeometry(0.045, 8, 6), m, rim, BONE.head);
+  // Goggles sitting on the strap at the front: rim torus + glassy lens, facing along the dome normal.
+  const gy = (y0 + y1) / 2 + 0.004;
+  const rho = ringR(gy);
+  for (const side of [1, -1]) {
+    const gx = side * M.goggleX;
+    const gz = Math.sqrt(Math.max(0, rho * rho - gx * gx));
+    const n = new THREE.Vector3(gx, gy / (sq * sq), gz).normalize();
+    const pos = new THREE.Vector3(gx, gy, gz).addScaledVector(n, 0.02);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+    m.copy(place).multiply(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(1, 1, 1)));
+    b.addRigid(new THREE.TorusGeometry(M.goggleRadius, 0.017, 6, 14), m, rim, BONE.head);
+    m.copy(place).multiply(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(1, 1, 0.42)));
+    b.addRigid(new THREE.SphereGeometry(M.goggleRadius, 12, 6), m, lens, BONE.head);
+  }
 }
 
 const wormGeoCache = new Map<number, THREE.BufferGeometry>();
@@ -369,7 +494,7 @@ export interface WormRig {
   bones: THREE.Bone[];
 }
 
-const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.5, -0.1), 0.9);
+const BOUNDS = new THREE.Sphere(new THREE.Vector3(0, 0.5, -0.2), 1.0);
 
 /** One worm instance: own skeleton, shared geometry/material. */
 export function createWormRig(
@@ -405,7 +530,18 @@ export function createWormRig(
     outline.castShadow = false;
     outline.boundingSphere = BOUNDS.clone();
   }
+  // Bones are bound at the rest pose; open the lids so a freshly created rig does not look sleepy.
+  bones[BONE.lidL]!.rotation.x = LID_OPEN;
+  bones[BONE.lidR]!.rotation.x = LID_OPEN;
   return { mesh, outline, bones };
+}
+
+/** Rest (bind) local position of a bone – the view offsets brows etc. from here. */
+export function boneRestLocal(index: number): THREE.Vector3 {
+  const r = BONE_REST[index]!;
+  if (r.parent < 0) return new THREE.Vector3(r.pos[0], r.pos[1], r.pos[2]);
+  const pp = BONE_REST[r.parent]!.pos;
+  return new THREE.Vector3(r.pos[0] - pp[0], r.pos[1] - pp[1], r.pos[2] - pp[2]);
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LIGHT } from './palette';
 
 export interface TerrainMaterialOptions {
   /** Faceted normals via screen-space derivatives (low-poly look). Default false: marching-cubes
@@ -7,12 +8,11 @@ export interface TerrainMaterialOptions {
 }
 
 /**
- * Toon ramp for the sun: 4 bands keyed on dot(N, L).
- * MeshToonMaterial samples the ramp at u = dot(N,L) * 0.5 + 0.5, so the left half is back-facing.
- * Bands (dot(N,L)): < 0 → 0 (ambient/hemisphere only, matches cast shadows), 0–0.25 → 0.59,
- * 0.25–0.5 → 0.84, > 0.5 → 1.
+ * Toon ramp for the sun (per lighting preset, see palette.ts LIGHT.toonRamp).
+ * MeshToonMaterial samples the ramp at u = dot(N,L) * 0.5 + 0.5, so the left half is back-facing and
+ * stays 0 (hemisphere fill only, matching cast shadows).
  */
-const RAMP: readonly number[] = [0, 0, 0, 0, 0, 0, 0, 0, 150, 150, 215, 215, 255, 255, 255, 255];
+const RAMP: readonly number[] = LIGHT.toonRamp;
 
 let rampTexture: THREE.DataTexture | null = null;
 

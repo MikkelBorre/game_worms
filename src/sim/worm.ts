@@ -119,7 +119,7 @@ export const KNOCK_RECOVER_SPEED = 0.5;
  */
 export type WormAnimState = 'idle' | 'walk' | 'windup' | 'jump' | 'backflip' | 'fall' | 'knocked' | 'dead';
 
-export type DeathCause = 'water' | 'fall';
+export type DeathCause = 'water' | 'fall' | 'explosion';
 
 export interface WormState {
   id: number;
@@ -194,9 +194,14 @@ const PROBE_DOWN = { x: 0, y: -1, z: 0 };
  * Weapons (M3) can still query worm colliders normally.
  */
 export const WORM_GROUP = 0x0002;
+/**
+ * Collision-group bit of projectile colliders (weapons). Worm movement ignores projectiles too (a grenade lying
+ * on the ground must not block or carry a worm); weapons find worm hits with their own shape casts.
+ */
+export const PROJECTILE_GROUP = 0x0004;
 /** InteractionGroups: memberships in the high 16 bits, filter in the low 16 bits. */
 const WORM_COLLIDER_GROUPS = ((WORM_GROUP << 16) | 0xffff) >>> 0;
-const WORM_QUERY_GROUPS = ((0xffff << 16) | (0xffff & ~WORM_GROUP)) >>> 0;
+const WORM_QUERY_GROUPS = ((0xffff << 16) | (0xffff & ~(WORM_GROUP | PROJECTILE_GROUP))) >>> 0;
 const IDENTITY_ROT = { x: 0, y: 0, z: 0, w: 1 };
 
 export function fallDamage(drop: number): number {

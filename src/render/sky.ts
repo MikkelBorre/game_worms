@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WORLD_MIN, WORLD_SIZE } from '../terrain/types';
-import { FOG, LIGHT, SKY, SUN_DIRECTION } from './palette';
+import { FOG, HAZE, LIGHT, SKY, SUN_DIRECTION } from './palette';
 
 export interface Sky {
   sun: THREE.DirectionalLight;
@@ -30,14 +30,21 @@ void main() {
 `;
 
 const skyFragment = /* glsl */ `
+// All colours arrive in sRGB (display) space: the dome is neither tone mapped nor colour converted, so the
+// horizon matches three's fog (which is mixed in output space) exactly, and gradients do not go muddy.
 uniform vec3 uZenith;
 uniform vec3 uMid;
 uniform vec3 uHorizon;
+uniform vec3 uHaze;
+uniform vec2 uHazeParams; // strength, exponent
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uSunGlow;
+uniform float uSunDiscCos;
 uniform vec3 uCloud;
 uniform vec3 uCloudShade;
+uniform vec3 uCloudRim;
+uniform float uCloudCover;
 uniform float uTime;
 varying vec3 vDir;
 
@@ -64,32 +71,94 @@ void main() {
   vec3 d = normalize(vDir);
   float h = d.y;
   float t = clamp(h, 0.0, 1.0);
-  // Horizon -> mid band -> zenith. Below the horizon we stay at the horizon (= fog) colour.
-  vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.22, t));
-  col = mix(col, uZenith, smoothstep(0.18, 0.85, t));
-
   float s = max(dot(d, uSunDir), 0.0);
-  col += uSunGlow * (pow(s, 6.0) * 0.18 + pow(s, 48.0) * 0.35);
+  // Horizon = fog colour shifted towards the haze colour when looking at the sun (same formula as the
+  // fog chunk installed below, so distant terrain and water melt into the sky in every direction).
+  vec3 horizon = mix(uHorizon, uHaze, uHazeParams.x * pow(s, uHazeParams.y));
+  // Horizon -> mid band -> zenith. Below the horizon we stay at the horizon (= fog) colour.
+  vec3 col = mix(horizon, uMid, smoothstep(0.0, 0.3, t));
+  col = mix(col, uZenith, smoothstep(0.22, 0.9, t));
+  // Warm glow around the sun.
+  col += uSunGlow * (pow(s, 5.0) * 0.22 + pow(s, 40.0) * 0.4);
 
-  // Stylized two-tone clouds projected on a plane, crisp edges, fading towards the horizon.
-  if (h > 0.015) {
+  // Stylized clouds projected on a plane: crisp two-tone shapes whose sun-facing edges catch a warm rim.
+  if (h > 0.01) {
     vec2 uv = d.xz / (h + 0.12) * 1.1 + vec2(uTime * 0.004, uTime * 0.002);
+    vec2 toSun = normalize(uSunDir.xz + vec2(1e-4));
     float n = fbm3(uv * 1.6);
-    float cover = smoothstep(0.585, 0.595, n);
-    float lit = smoothstep(0.64, 0.66, fbm3(uv * 1.6 + uSunDir.xz * 0.12));
-    vec3 cc = mix(uCloud, uCloudShade, 0.55 * (1.0 - lit));
-    float fade = smoothstep(0.015, 0.2, h);
-    col = mix(col, cc, cover * fade * 0.92);
+    float nSun = fbm3(uv * 1.6 + toSun * 0.22);
+    float cover = smoothstep(uCloudCover - 0.005, uCloudCover + 0.005, n);
+    // Sun-facing half of each cloud is lit (density falls off towards the sun), the rest takes the
+    // shade colour; thin cloud margins on the lit side glow warm.
+    float lit = smoothstep(-0.01, 0.02, n - nSun);
+    float margin = 1.0 - smoothstep(uCloudCover + 0.01, uCloudCover + 0.06, n);
+    vec3 cc = mix(uCloudShade, uCloud, lit);
+    cc = mix(cc, uCloudRim, margin * (lit * 0.7 + 0.3) * (0.5 + 0.5 * s));
+    // Clouds near the sun glow; clouds near the horizon take on the haze colour.
+    cc += uSunGlow * pow(s, 10.0) * 0.45;
+    cc = mix(cc, horizon, (1.0 - smoothstep(0.01, 0.16, h)) * 0.55);
+    float fade = smoothstep(0.01, 0.1, h);
+    col = mix(col, cc, cover * fade * 0.95);
   }
 
-  // Sun disc (drawn over clouds so it always reads).
-  col = mix(col, uSunColor * 3.0, smoothstep(0.99935, 0.9996, s));
+  // Sun disc (drawn over clouds so it always reads) with a soft bloom.
+  col = mix(col, uSunColor * 1.2, smoothstep(uSunDiscCos, uSunDiscCos + 0.0003, s));
 
   gl_FragColor = vec4(col, 1.0);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
 }
 `;
+
+let hazeFogInstalled = false;
+const srgbTriple = (hex: number): string =>
+  [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((v) => (v / 255).toFixed(4)).join(', ');
+
+/**
+ * Directional "golden hour" haze for three's built-in fog: patches the global fog shader chunks so the fog
+ * colour shifts towards HAZE.color when looking towards the sun. Every material that includes both the
+ * lights and fog chunks (terrain, worms, scatter, water) gets it for free; unlit materials keep the plain
+ * fog colour. The sun is read from directionalLights[0] (view space, uploaded by the renderer), so no extra
+ * uniforms are needed. Must run before the first compile; idempotent.
+ */
+export function installHazeFog(): void {
+  if (hazeFogInstalled) return;
+  hazeFogInstalled = true;
+  const C = THREE.ShaderChunk as Record<string, string>;
+  C.fog_pars_vertex = /* glsl */ `
+#ifdef USE_FOG
+  varying float vFogDepth;
+  varying vec3 vFogViewPos;
+#endif
+`;
+  C.fog_vertex = /* glsl */ `
+#ifdef USE_FOG
+  vFogDepth = - mvPosition.z;
+  vFogViewPos = mvPosition.xyz;
+#endif
+`;
+  C.fog_pars_fragment = `${C.fog_pars_fragment}
+#ifdef USE_FOG
+  varying vec3 vFogViewPos;
+#endif
+`;
+  C.lights_pars_begin = `#define WW_HAS_LIGHTS\n${C.lights_pars_begin}`;
+  C.fog_fragment = /* glsl */ `
+#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+  #else
+    float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+  #endif
+  vec3 wwFogColor = fogColor;
+  #if defined( WW_HAS_LIGHTS ) && NUM_DIR_LIGHTS > 0
+    float wwSun = max( dot( normalize( vFogViewPos ), directionalLights[ 0 ].direction ), 0.0 );
+    wwFogColor = mix( fogColor, vec3( ${srgbTriple(HAZE.color)} ), ${HAZE.strength.toFixed(4)} * pow( wwSun, ${HAZE.exponent.toFixed(4)} ) );
+  #endif
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, wwFogColor, fogFactor );
+#endif
+`;
+}
+
+const srgb = (hex: number) => new THREE.Color().setHex(hex, THREE.SRGBColorSpace).convertLinearToSRGB();
 
 /**
  * Gradient sky dome (1 draw call), linear distance fog matching the horizon colour,
@@ -97,6 +166,7 @@ void main() {
  */
 export function createSky(scene: THREE.Scene): Sky {
   const sunDir = new THREE.Vector3(...SUN_DIRECTION).normalize();
+  installHazeFog();
 
   scene.background = new THREE.Color(SKY.horizon);
   scene.fog = new THREE.Fog(FOG.color, FOG.near, FOG.far);
@@ -105,14 +175,19 @@ export function createSky(scene: THREE.Scene): Sky {
   const domeGeo = new THREE.SphereGeometry(DOME_RADIUS, 32, 16);
   const domeMat = new THREE.ShaderMaterial({
     uniforms: {
-      uZenith: { value: new THREE.Color(SKY.zenith) },
-      uMid: { value: new THREE.Color(SKY.mid) },
-      uHorizon: { value: new THREE.Color(SKY.horizon) },
+      uZenith: { value: srgb(SKY.zenith) },
+      uMid: { value: srgb(SKY.mid) },
+      uHorizon: { value: srgb(SKY.horizon) },
+      uHaze: { value: srgb(HAZE.color) },
+      uHazeParams: { value: new THREE.Vector2(HAZE.strength, HAZE.exponent) },
       uSunDir: { value: sunDir.clone() },
-      uSunColor: { value: new THREE.Color(SKY.sunColor) },
-      uSunGlow: { value: new THREE.Color(SKY.sunGlow) },
-      uCloud: { value: new THREE.Color(SKY.cloud) },
-      uCloudShade: { value: new THREE.Color(SKY.cloudShade) },
+      uSunColor: { value: srgb(SKY.sunColor) },
+      uSunGlow: { value: srgb(SKY.sunGlow) },
+      uSunDiscCos: { value: SKY.sunDiscCos },
+      uCloud: { value: srgb(SKY.cloud) },
+      uCloudShade: { value: srgb(SKY.cloudShade) },
+      uCloudRim: { value: srgb(SKY.cloudRim) },
+      uCloudCover: { value: SKY.cloudCover },
       uTime: { value: 0 },
     },
     vertexShader: skyVertex,
@@ -121,7 +196,7 @@ export function createSky(scene: THREE.Scene): Sky {
     depthWrite: false,
     fog: false,
     // three applies fog *after* tone mapping using the raw sRGB fog colour, so the dome must skip tone
-    // mapping too – otherwise the fogged horizon and the sky would not match.
+    // mapping (and colour conversion – its uniforms are already sRGB) or the horizon would not match.
     toneMapped: false,
   });
   const dome = new THREE.Mesh(domeGeo, domeMat);

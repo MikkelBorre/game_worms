@@ -7,7 +7,15 @@ import type { Vec2, Vec3 } from './math';
 export type Command =
   | { type: 'noop' }
   | { type: 'spawnWorm'; team: number; pos: Vec3 }
-  | { type: 'fire'; weapon: string; dir: Vec3; power: number }
+  /**
+   * Fire `weapon` from worm `wormId` (M3). `dir` is the aim direction (world space, normalised by the sim; the
+   * input layer takes it from the aim camera). `power` 0..1 (ignored by weapons without usesPower).
+   * `timer` is the fuse in seconds for usesTimer weapons (grenade: 1–5, default 3). The worm turns to face
+   * the yaw of `dir`.
+   */
+  | { type: 'fire'; wormId: number; weapon: string; dir: Vec3; power: number; timer?: number }
+  /** Set the wind acceleration [x, z] (m/s²) applied to affectedByWind projectiles. M4 seeds it per turn. */
+  | { type: 'setWind'; wind: Vec2 }
   /**
    * Held walk intent for a worm, already resolved to a world-space XZ direction [x, z]
    * (the input layer applies camera yaw; the sim knows nothing about cameras).

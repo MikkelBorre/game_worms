@@ -16,11 +16,67 @@ import { getToonRamp } from './materials';
 import { SplashFx } from './wormFx';
 import {
   BONE,
+  LID_OPEN,
+  boneRestLocal,
   createOutlineMaterial,
   createWormMaterial,
   createWormRig,
   getGravestoneGeometry,
 } from './wormModel';
+
+/** Facial expressions (lids, brows, mouth, eye size). */
+export type WormExpression = 'happy' | 'neutral' | 'determined' | 'scared';
+
+interface ExpressionPose {
+  /** Lid angle offset from LID_OPEN (rad, + = more closed). */
+  lid: number;
+  /** Lid / brow slant (rad, + = inner corners down = angry). */
+  lidSlant: number;
+  browY: number;
+  browSlant: number;
+  /** Mouth scale.y: 1 = full smile, ~0.1 = grim line. */
+  mouth: number;
+  /** 0 = smile, 1 = frown (mouth bone rotated by π). */
+  frown: number;
+  eye: number;
+  pupil: number;
+}
+
+/** Expression tweakables. */
+export const WORM_EXPRESSIONS: Record<WormExpression, ExpressionPose> = {
+  happy: { lid: -0.08, lidSlant: -0.1, browY: 0.014, browSlant: -0.14, mouth: 1, frown: 0, eye: 1, pupil: 1 },
+  neutral: { lid: 0.18, lidSlant: 0, browY: 0, browSlant: 0, mouth: 0.5, frown: 0, eye: 1, pupil: 1 },
+  determined: {
+    lid: 0.72,
+    lidSlant: 0.34,
+    browY: -0.024,
+    browSlant: 0.5,
+    mouth: 0.12,
+    frown: 0,
+    eye: 1,
+    pupil: 1.05,
+  },
+  scared: {
+    lid: -0.4,
+    lidSlant: -0.3,
+    browY: 0.03,
+    browSlant: -0.45,
+    mouth: 0.8,
+    frown: 1,
+    eye: 1.12,
+    pupil: 0.72,
+  },
+};
+
+export interface WormSyncOptions {
+  /** Worm currently aiming (aim camera): shows the determined face. */
+  aimingId?: number | null;
+}
+
+/** HP at or below which an idle worm looks scared. */
+const SCARED_HP = 25;
+/** Lid angle (rad) for a fully closed eye. */
+const LID_CLOSED = 1.75;
 
 /** Render-side mirror of the sim worm events the view reacts to. */
 export type WormViewEvent =
@@ -80,6 +136,8 @@ export const WORM_ANIM = {
   /** Marker fades out between (near + range) and near metres from the camera. */
   markerFadeNear: 2.9,
   markerFadeRange: 0.8,
+  /** Seconds the determined (aiming) face lingers after leaving aim mode. */
+  aimHold: 2.5,
 } as const;
 
 const TAU = Math.PI * 2;
@@ -136,6 +194,10 @@ class WormVisual {
   deathPos: Vec3 | null = null;
   sinkT = -1;
   graveT = -1;
+  /** Seconds the determined face lingers after aiming ends. */
+  aimHold = 0;
+  /** Current blended expression pose. */
+  readonly ex: ExpressionPose = { ...WORM_EXPRESSIONS.happy };
   private rng: number;
 
   constructor(
@@ -189,6 +251,10 @@ export class WormView {
   /** Deaths reported before the worm was first synced. */
   private readonly pendingDeaths = new Map<number, { cause: DeathCause; pos: Vec3 }>();
   private readonly pose = { pos: [0, 0, 0] as Vec3, yaw: 0 };
+  private readonly exprOverride = new Map<number, WormExpression>();
+  private aimingId: number | null = null;
+  private readonly browRestL = boneRestLocal(BONE.browL);
+  private readonly browRestR = boneRestLocal(BONE.browR);
 
   constructor(opts: WormViewOptions = {}) {
     this.waterLevel = opts.waterLevel ?? WATER_LEVEL;
@@ -210,6 +276,15 @@ export class WormView {
       this.markerMat.opacity = clamp((d - WORM_ANIM.markerFadeNear) / WORM_ANIM.markerFadeRange, 0, 1);
     };
     this.group.add(this.marker);
+  }
+
+  /**
+   * Force a facial expression on a worm (null = automatic: happy idle, neutral walking, scared in the air or
+   * at low HP, determined while aiming / winding up). Expressions blend smoothly.
+   */
+  setExpression(id: number, expression: WormExpression | null): void {
+    if (expression) this.exprOverride.set(id, expression);
+    else this.exprOverride.delete(id);
   }
 
   /** Mark the worm whose turn it is (bouncing arrow above it). */
@@ -263,8 +338,9 @@ export class WormView {
     }
   }
 
-  sync(worms: readonly WormState[], alpha: number, dt = 1 / 60): void {
+  sync(worms: readonly WormState[], alpha: number, dt = 1 / 60, opts?: WormSyncOptions): void {
     const d = Math.min(Math.max(dt, 0), 0.1);
+    this.aimingId = opts?.aimingId ?? null;
     this.time += d;
     this.frame++;
     for (let i = 0; i < worms.length; i++) {
@@ -462,6 +538,14 @@ export class WormView {
         fb * 1.5 * Math.sin(fp),
       0,
     );
+    // Tail tip follows with a phase lag (whip) and lifts a little when idle.
+    b[BONE.tailTip]!.rotation.set(
+      -0.08 * idleAmp * (1 + Math.sin(v.time * 0.8)) - 0.15 * v.flailAmp * Math.sin(fp * 0.7 - 0.8),
+      A.walkTail * 0.9 * v.walkAmp * Math.sin(ph + Math.PI - 1.0) +
+        0.2 * idleAmp * Math.sin(v.time * 1.3 - 0.9) +
+        fb * 1.8 * Math.sin(fp - 0.9),
+      0,
+    );
 
     // --- Eyes: blink, squint, pupils look toward the turn / saccades.
     v.blinkIn -= dt;
@@ -476,19 +560,52 @@ export class WormView {
       v.sacY = (v.rand() - 0.5) * 0.35;
       if (v.rand() < 0.35) v.headLookTarget = (v.rand() - 0.5) * 0.8;
     }
-    let lid = 1;
+    // Closure 0 = expression pose, 1 = shut (blink) – applied on top of the expression's lid angle.
+    let close = 0;
     if (v.blinkT > 0) {
       v.blinkT -= dt;
       const k = 1 - Math.abs(v.blinkT / A.blinkDuration - 0.5) * 2; // 0 → 1 → 0
-      lid = 1 - 0.9 * clamp(k * 1.5, 0, 1);
+      close = clamp(k * 1.5, 0, 1);
     }
     if (v.squint > 0) {
       v.squint -= dt;
-      lid = Math.min(lid, 0.35);
+      close = Math.max(close, 0.55);
     }
-    const eyeWide = 1 + 0.12 * v.flailAmp;
-    b[BONE.eyeL]!.scale.set(eyeWide, lid * eyeWide, eyeWide);
-    b[BONE.eyeR]!.scale.set(eyeWide, lid * eyeWide, eyeWide);
+
+    // --- Expression: override > aiming > state/HP, blended.
+    const exprName = this.pickExpression(v, w, dt);
+    const target = WORM_EXPRESSIONS[exprName];
+    const ex = v.ex;
+    const ek = damp(9, dt);
+    ex.lid += (target.lid - ex.lid) * ek;
+    ex.lidSlant += (target.lidSlant - ex.lidSlant) * ek;
+    ex.browY += (target.browY - ex.browY) * ek;
+    ex.browSlant += (target.browSlant - ex.browSlant) * ek;
+    ex.mouth += (target.mouth - ex.mouth) * ek;
+    ex.frown += (target.frown - ex.frown) * ek;
+    ex.eye += (target.eye - ex.eye) * ek;
+    ex.pupil += (target.pupil - ex.pupil) * ek;
+
+    const eyeWide = ex.eye * (1 + 0.1 * v.flailAmp);
+    b[BONE.eyeL]!.scale.setScalar(eyeWide);
+    b[BONE.eyeR]!.scale.setScalar(eyeWide);
+    const lidA = LID_OPEN + ex.lid;
+    const lidX = lidA + (LID_CLOSED - lidA) * close;
+    const slant = ex.lidSlant * (1 - close);
+    b[BONE.lidL]!.rotation.set(lidX, 0, slant);
+    b[BONE.lidR]!.rotation.set(lidX, 0, -slant);
+    b[BONE.lidL]!.scale.setScalar(eyeWide);
+    b[BONE.lidR]!.scale.setScalar(eyeWide);
+    // Brows ride up with wide eyes and bob a little with the blink.
+    const browY = ex.browY + (eyeWide - 1) * 0.1 - close * 0.01;
+    b[BONE.browL]!.position.set(this.browRestL.x, this.browRestL.y + browY, this.browRestL.z);
+    b[BONE.browR]!.position.set(this.browRestR.x, this.browRestR.y + browY, this.browRestR.z);
+    b[BONE.browL]!.rotation.set(0, 0, ex.browSlant);
+    b[BONE.browR]!.rotation.set(0, 0, -ex.browSlant);
+    const mouth = b[BONE.mouth]!;
+    mouth.rotation.set(0, 0, Math.PI * ex.frown);
+    mouth.scale.set(1, Math.max(0.08, ex.mouth), 1);
+
     const turnLook = clamp(dyaw * 1.2, -0.6, 0.6);
     const lx = turnLook + v.sacX * idleAmp;
     const ly = lookYTarget + v.sacY * idleAmp;
@@ -496,6 +613,20 @@ export class WormView {
     v.lookY += (ly - v.lookY) * damp(14, dt);
     b[BONE.pupilL]!.rotation.set(-v.lookY, v.lookX, 0);
     b[BONE.pupilR]!.rotation.set(-v.lookY, v.lookX, 0);
+    b[BONE.pupilL]!.scale.set(ex.pupil, ex.pupil, 1);
+    b[BONE.pupilR]!.scale.set(ex.pupil, ex.pupil, 1);
+  }
+
+  private pickExpression(v: WormVisual, w: WormState, dt: number): WormExpression {
+    const forced = this.exprOverride.get(v.id);
+    if (forced) return forced;
+    if (this.aimingId === v.id) v.aimHold = WORM_ANIM.aimHold;
+    else v.aimHold = Math.max(0, v.aimHold - dt);
+    if (v.aimHold > 0 || w.state === 'windup') return 'determined';
+    if (w.state === 'fall' || w.state === 'knocked' || v.hurt > 0) return 'scared';
+    if (w.hp <= SCARED_HP) return 'scared';
+    if (w.state === 'walk') return 'neutral';
+    return 'happy';
   }
 
   private startDeath(v: WormVisual, w: WormState): void {
@@ -581,6 +712,7 @@ export class WormView {
   clear(): void {
     for (let i = this.list.length - 1; i >= 0; i--) this.remove(this.list[i]!);
     this.pendingDeaths.clear();
+    this.exprOverride.clear();
     this.splash.clear();
     this.activeId = null;
     this.marker.visible = false;
