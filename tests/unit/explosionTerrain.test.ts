@@ -291,20 +291,57 @@ describe('determinism & perf with real carves', () => {
     expect(b.craterHeights).toEqual(a.craterHeights);
     expect(new Set(a.hashes).size).toBeGreaterThan(10);
 
-    // Main-thread cost of an explosion tick. Node meshes inline (synchronously inside the step); in the browser
-    // that part runs in workers, so subtract it. Collider rebuild + listener time is added separately.
-    const s = a.stats;
+    // Timing of the match's explosion ticks is only reported here (5 samples, cold JIT); the budget is asserted in
+    // the dedicated perf test below.
     const mainMs = a.explosionStepMs.map((ms, i) => ms - a.meshMs[i]!);
     console.log(
-      `[perf] explosion step: ${a.explosionStepMs.map((m) => m.toFixed(2)).join(', ')} ms incl. inline meshing ` +
-        `${a.meshMs.map((m) => m.toFixed(2)).join(', ')} ms ⇒ main thread ≈ ${mainMs.map((m) => m.toFixed(2)).join(', ')} ms; ` +
-        `last carve: edit ${s.lastEditMs.toFixed(2)} ms, colliders ${s.lastColliderMs.toFixed(2)} ms ` +
-        `(${s.lastRebuildChunks} chunks, ${s.lastRebuildBlocks} blocks), rebuild main ${s.lastRebuildMs.toFixed(2)} ms`,
+      `[perf] match explosion ticks: main thread ≈ ${mainMs.map((m) => m.toFixed(2)).join(', ')} ms ` +
+        `(inline meshing excluded: ${a.meshMs.map((m) => m.toFixed(2)).join(', ')} ms)`,
     );
-    // Budget check on the median (the first blast also pays JIT warm-up; parallel test files add noise).
-    const median = [...mainMs].sort((x, y) => x - y)[Math.floor(mainMs.length / 2)]!;
-    expect(median + s.lastColliderMs).toBeLessThan(16);
   }, 120_000);
+
+  it('explosion main-thread cost (blast + density edit + collider rebuild) < 16 ms', async () => {
+    const w = (current = await world());
+    const { x, z, h } = findChunkCorner(w.terrain);
+    const worm = await w.spawn([x + 1, h + FEET + 0.4, z + 1]);
+    await w.run(30);
+    // 1 warm-up blast + 8 measured ones in a ring around a chunk corner (multi-chunk carves).
+    const samples: { blast: number; colliders: number; emit: number; chunks: number }[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const px = x + Math.sin(a) * 2.5;
+      const pz = z + Math.cos(a) * 2.5;
+      const pos: Vec3 = [px, w.terrain.heightAt(px, pz), pz];
+      const mesh0 = w.mesher.busyMs;
+      const t0 = performance.now();
+      explode({ sim: w.sim }, pos, 3, 50, { weapon: 'bazooka' });
+      // Main-thread part of the blast: damage, density edit, worker input extraction. In node the mesher runs
+      // inline inside this call; in the browser that is worker time, so it is subtracted.
+      const blast = performance.now() - t0 - (w.mesher.busyMs - mesh0);
+      await w.sim.whenTerrainIdle();
+      const st = w.terrain.stats();
+      if (i > 0)
+        samples.push({
+          blast,
+          colliders: st.lastColliderMs,
+          emit: st.lastEmitMs,
+          chunks: st.lastRebuildChunks,
+        });
+      await w.run(2);
+    }
+    const totals = samples.map((q) => q.blast + q.colliders + q.emit).sort((p, q) => p - q);
+    const median = totals[Math.floor(totals.length / 2)]!;
+    console.log(
+      `[perf] explosion main thread (blast + colliders + emit), 8 blasts: median ${median.toFixed(2)} ms, ` +
+        `max ${totals[totals.length - 1]!.toFixed(2)} ms; per blast ` +
+        samples
+          .map((q) => `${q.blast.toFixed(1)}+${q.colliders.toFixed(1)}+${q.emit.toFixed(1)} (${q.chunks}ch)`)
+          .join(', '),
+    );
+    // Median: other test files run in parallel and CPU contention spikes single samples.
+    expect(median).toBeLessThan(16);
+    expect(w.explosions.some((e) => e.hits.some((q) => q.id === worm))).toBe(true); // blasts really hit the worm
+  }, 60_000);
 
   it('sim step with 4 projectiles in flight on the island < 3 ms', async () => {
     const w = (current = await world());
