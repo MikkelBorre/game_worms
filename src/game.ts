@@ -130,6 +130,8 @@ export class Game {
 
   /** Make a worm the locally controlled one; the follow camera tracks it. */
   setActiveWorm(id: number | null): void {
+    // Only living, existing worms can be controlled.
+    if (id !== null && !this.sim.worms.some((w) => w.id === id && w.alive)) return;
     this.activeWormId = id;
     this.wormView.setActive(id);
     this.cameraRig.setTarget(id === null ? null : () => this.activeTarget());

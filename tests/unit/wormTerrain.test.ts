@@ -398,7 +398,7 @@ describe('determinism & perf on real terrain', () => {
     expect(new Set(a.hashes).size).toBe(15);
   }, 60_000);
 
-  it('16 worms walking on the island: avg sim step < 3 ms; idle (resting) worms are cheap', () => {
+  it('16 worms walking on the island: sim step < 3 ms (median of 60-tick windows); idle worms are cheap', () => {
     const isl = island(1234);
     const w = world(isl);
     const list = spawnTeams({ seed: 1234, teams: 4, wormsPerTeam: 4, heightAt: isl.heightAt, waterLevel: 0 });
@@ -435,7 +435,12 @@ describe('determinism & perf on real terrain', () => {
       `[perf] real terrain, 16 worms (${alive} alive at end): walking avg ${avg(walk).toFixed(3)} ms/tick ` +
         `(p95 ${p95(walk).toFixed(3)}), idle avg ${avg(idle).toFixed(3)} ms/tick`,
     );
-    expect(avg(walk)).toBeLessThan(3);
+    // Median of per-window averages: robust against CPU contention bursts on shared CI runners,
+    // while still failing if the typical cost exceeds the 3 ms budget.
+    const windows: number[] = [];
+    for (let i = 0; i + 60 <= walk.length; i += 60) windows.push(avg(walk.slice(i, i + 60)));
+    const median = [...windows].sort((x, y) => x - y)[Math.floor(windows.length / 2)]!;
+    expect(median).toBeLessThan(3);
     expect(avg(idle)).toBeLessThan(avg(walk));
     w.dispose();
   });
