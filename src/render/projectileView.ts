@@ -22,7 +22,8 @@ export const PROJECTILE_LOOK = {
     band: 0xf2c230,
     fins: 0xd13a2c,
     nozzle: 0x3b3a38,
-    flame: [3.2, 1.6, 0.35] as Vec3,
+    /** Exhaust flame (sRGB, not tone mapped). */
+    flame: 0xffc02a,
     /** Rotation smoothing toward the velocity direction (1/s). */
     turnRate: 18,
   },
@@ -34,7 +35,7 @@ export const PROJECTILE_LOOK = {
     /** Fuse sparks per second (ramps up in the last second). */
     sparkRate: 30,
     /** Visual radius (m); the collider is 0.15. */
-    radius: 0.17,
+    radius: 0.19,
   },
   outline: 0x2a1420,
   /** Splash strength for projectiles dropping into the sea (worm = 1). */
@@ -163,8 +164,8 @@ export class ProjectileView {
     this.group.add(this.splash.group);
     this.mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: getToonRamp() });
     this.outlineMat = new THREE.MeshBasicMaterial({ color: PROJECTILE_LOOK.outline, side: THREE.BackSide });
-    const fl = PROJECTILE_LOOK.rocket.flame;
-    this.flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(fl[0], fl[1], fl[2]) });
+    this.flameMat = new THREE.MeshBasicMaterial({ color: PROJECTILE_LOOK.rocket.flame });
+    this.flameMat.toneMapped = false;
     const ballGeo = tint(new THREE.IcosahedronGeometry(0.15, 1), 0x555555);
     this.geo = { rocket: buildRocket(), grenade: buildGrenade(), ball: ballGeo };
     this.flameGeo = new THREE.ConeGeometry(0.06, 0.3, 7);

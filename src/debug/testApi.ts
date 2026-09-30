@@ -41,6 +41,15 @@ export interface GameTestApi {
   selectWorm(id: number | null): void;
   /** Render n frames (no sim ticks) so time-based shaders advance. */
   renderFrames(n: number, dtSec?: number): void;
+  /**
+   * Stop (true) / resume (false) the real-time loop's rendering, incl. the frame advance() draws. With it frozen,
+   * only renderFrames() draws, so FX timing in screenshots is exact regardless of how slow the browser is.
+   */
+  freezeRender(frozen: boolean): void;
+  /** Enable/disable hit-stop (off by default with ?debug=1 so advance() keeps exact tick counts). */
+  setHitStop(enabled: boolean): void;
+  /** Select the weapon used by mouse fire / shown by the HUD (registry id), and the grenade fuse (s). */
+  selectWeapon(id: string, timer?: number): void;
 }
 
 declare global {
@@ -93,6 +102,16 @@ export function installTestApi(game: Game): GameTestApi {
     heightAt: (x, z) => game.terrain.heightAt(x, z),
     renderFrames: (n, dtSec = 1 / 60) => {
       for (let i = 0; i < n; i++) game.renderFrame(1, dtSec);
+    },
+    freezeRender: (frozen) => {
+      game.renderFrozen = frozen;
+    },
+    setHitStop: (enabled) => {
+      game.hitStopEnabled = enabled;
+    },
+    selectWeapon: (id, timer) => {
+      game.selectedWeapon = id;
+      if (timer !== undefined) game.grenadeTimer = timer;
     },
   };
   window.__game = api;

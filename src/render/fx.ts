@@ -3,7 +3,7 @@
  *
  * Every particle kind is ONE InstancedMesh (1 draw call) backed by a fixed-size struct-of-arrays pool, so the
  * whole system costs a handful of draw calls at peak and allocates nothing per frame:
- *   fireball (unlit, hot gradient) · smoke (toon-lit puffs that grow then shrink – opaque, no sorting) ·
+ *   fireball (unlit, hot gradient) · smoke (toon-banded puffs that grow then shrink – opaque, no sorting) ·
  *   debris (toon-lit chunks in terrain colours, bounce on the ground) · sparks (unlit, stretched along velocity)
  * plus a small pool of shockwave rings and one pooled PointLight flash.
  *
@@ -35,27 +35,29 @@ export const FX = {
   /** Fireball: life (s), lobe size (× radius). */
   fireballLife: 0.45,
   fireballSize: 0.5,
+  /** Life fraction at which the fire gradient reaches its middle colour. */
+  fireBreak: 0.4,
   /**
-   * Fire gradient over life (linear rgb, NOT tone mapped → exactly these saturated cartoon colours; the
+   * Fire gradient over life (sRGB hex, NOT tone mapped → exactly these saturated cartoon colours; the
    * view-facing shading brightens the centre of each ball on top).
    */
-  fireHot: [1.0, 0.86, 0.3] as Vec3,
-  fireMid: [1.0, 0.42, 0.04] as Vec3,
-  fireCool: [0.55, 0.1, 0.03] as Vec3,
+  fireHot: 0xffd21f,
+  fireMid: 0xff8a14,
+  fireCool: 0xe8481a,
 
   /** Smoke: life range (s), start delay (s), size (× radius), rise acceleration (m/s²), drag (1/s). */
-  smokeLife: [1.1, 1.9] as [number, number],
-  smokeDelay: [0.14, 0.3] as [number, number],
-  smokeSize: [0.2, 0.36] as [number, number],
+  smokeLife: [0.9, 1.6] as [number, number],
+  smokeDelay: [0.22, 0.42] as [number, number],
+  smokeSize: [0.13, 0.25] as [number, number],
   smokeRise: 2.6,
   smokeDrag: 2.2,
   /** Smoke colours (sRGB), lit by a fake sky-from-above toon shade (no dependence on the sun direction). */
-  smokeDark: 0x77706a,
-  smokeLight: 0xc9c3bb,
+  smokeDark: 0xb0a9a1,
+  smokeLight: 0xf0ece6,
 
   /** Debris: speed (m/s), size (m), gravity, bounciness, life (s). */
   debrisSpeed: [5, 12] as [number, number],
-  debrisSize: [0.09, 0.26] as [number, number],
+  debrisSize: [0.08, 0.17] as [number, number],
   debrisGravity: 22,
   debrisBounce: 0.35,
   debrisLife: [1.6, 2.8] as [number, number],
@@ -65,8 +67,8 @@ export const FX = {
   sparkLife: [0.2, 0.55] as [number, number],
   sparkGravity: 14,
   sparkSize: 0.045,
-  sparkHot: [1.0, 0.95, 0.6] as Vec3,
-  sparkCool: [1.0, 0.5, 0.08] as Vec3,
+  sparkHot: 0xfff4a8,
+  sparkCool: 0xff9424,
 
   /** Ground shockwave ring: life (s), end radius (× radius). */
   ringLife: 0.45,
@@ -75,15 +77,20 @@ export const FX = {
 
   /** Point-light flash (set enabled=false to drop the per-fragment point light entirely). */
   light: true,
-  lightColor: 0xffa040,
+  lightColor: 0xff9a3c,
   /** Peak intensity per metre of blast radius (candela-ish, physically based lights). */
-  lightIntensity: 260,
-  lightDistance: 9,
+  lightIntensity: 80,
+  lightDistance: 5,
   lightLife: 0.35,
 
+  /** Fire/smoke surfaces stay at least this far (m) from the camera (they shrink instead). */
+  cameraClearance: 1.2,
+
   /** Rocket smoke trail: spacing (m), puff size (m), life (s). */
-  trailSpacing: 0.32,
-  trailSize: [0.13, 0.24] as [number, number],
+  trailSpacing: 0.2,
+  trailSize: [0.09, 0.17] as [number, number],
+  /** Random offset (m) of trail puffs so the trail doesn't read as a string of beads. */
+  trailJitter: 0.12,
   trailLife: [0.7, 1.15] as [number, number],
   trailColor: 0xf2eee8,
 };
@@ -132,7 +139,10 @@ vFxV = normalize(mat3(viewMatrix) * vFxW);`,
     const body =
       shade === 'glow'
         ? `float fxF = clamp(normalize(vFxV).z, 0.0, 1.0);
-diffuseColor.rgb *= 0.6 + 0.55 * fxF * fxF;`
+float fxHeat = clamp((diffuseColor.g - 0.3) * 2.5, 0.0, 1.0); // yellow-hot only
+float fxBand = fxF > 0.8 ? 1.0 : (fxF > 0.5 ? 0.5 : 0.0);
+diffuseColor.rgb *= fxF > 0.28 ? 1.0 : 0.8;
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.93, 0.55), fxBand * fxHeat * 0.4);`
         : `float fxU = normalize(vFxW).y;
 diffuseColor.rgb *= fxU > 0.35 ? 1.06 : (fxU > -0.35 ? 0.88 : 0.7);`;
     shader.fragmentShader = shader.fragmentShader
@@ -260,7 +270,15 @@ class ParticlePool {
     this.cb[i] = color.b;
   }
 
-  update(dt: number, groundAt: ((x: number, z: number) => number) | null): void {
+  /**
+   * `cam` (optional): particles never reach closer than FX.cameraClearance to it – they shrink instead, so a
+   * camera parked next to a blast is never swallowed by a screen-filling fireball.
+   */
+  update(
+    dt: number,
+    groundAt: ((x: number, z: number) => number) | null,
+    cam: THREE.Vector3 | null = null,
+  ): void {
     const cfg = this.cfg;
     const drag = cfg.drag > 0 ? Math.exp(-cfg.drag * dt) : 1;
     const grad = cfg.gradient;
@@ -311,7 +329,7 @@ class ParticlePool {
           break;
         }
         case 'puff':
-          s = sz0 * (0.35 + 0.65 * easeOut(Math.min(1, t / 0.3))) * (1 - smooth(0.55, 1, t));
+          s = sz0 * (0.35 + 0.65 * easeOut(Math.min(1, t / 0.3))) * (1 - smooth(0.45, 1, t));
           break;
         case 'solid':
           s = sz0 * (1 - smooth(0.82, 1, t));
@@ -320,6 +338,10 @@ class ParticlePool {
         default:
           s = sz0 * (1 - t);
           break;
+      }
+      if (cam) {
+        const dc = Math.hypot(x - cam.x, y - cam.y, z - cam.z) - FX.cameraClearance;
+        if (s > dc) s = dc;
       }
       if (s <= 1e-4) continue;
 
@@ -343,9 +365,10 @@ class ParticlePool {
       let b = this.cb[i]!;
       if (grad) {
         const [c0, c1, c2] = grad;
-        const u = t < 0.25 ? t / 0.25 : (t - 0.25) / 0.75;
-        const A = t < 0.25 ? c0 : c1;
-        const B = t < 0.25 ? c1 : c2;
+        const k = FX.fireBreak;
+        const u = t < k ? t / k : (t - k) / (1 - k);
+        const A = t < k ? c0 : c1;
+        const B = t < k ? c1 : c2;
         r *= A[0] + (B[0] - A[0]) * u;
         g *= A[1] + (B[1] - A[1]) * u;
         b *= A[2] + (B[2] - A[2]) * u;
@@ -431,7 +454,7 @@ export class Fx {
       stretch: 0,
       ground: false,
       bounce: 0,
-      gradient: [FX.fireHot, FX.fireMid, FX.fireCool],
+      gradient: [lin(FX.fireHot), lin(FX.fireMid), lin(FX.fireCool)],
     });
 
     const smokeGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -474,7 +497,7 @@ export class Fx {
       stretch: 0.09,
       ground: false,
       bounce: 0,
-      gradient: [FX.sparkHot, FX.sparkCool, FX.sparkCool],
+      gradient: [lin(FX.sparkHot), lin(FX.sparkCool), lin(FX.sparkCool)],
     });
 
     for (const pool of [this.smoke, this.debris, this.fire, this.sparks]) this.group.add(pool.mesh);
@@ -572,7 +595,7 @@ export class Fx {
     for (let i = 0; i < lobes; i++) {
       this.dir(d, 0.15);
       const sp = (2 + this.rand() * 4) * Math.sqrt(k);
-      const off = R * (0.2 + this.rand() * 0.35);
+      const off = R * (0.15 + this.rand() * 0.3);
       this.fire.spawn(
         x + d[0] * off,
         y + d[1] * off * 0.8 + R * 0.1,
@@ -598,7 +621,7 @@ export class Fx {
       this.col.copy(this.smokeDark).lerp(this.smokeLight, this.rand());
       this.smoke.spawn(
         x + d[0] * off,
-        y + d[1] * off * 0.6 + R * 0.1,
+        y + d[1] * off * 0.6 + R * 0.35,
         z + d[2] * off,
         d[0] * sp,
         d[1] * sp + 1.2,
@@ -707,10 +730,11 @@ export class Fx {
   trailPuff(x: number, y: number, z: number, vx: number, vy: number, vz: number): void {
     this.reseed(x, y, z, 0x7a11);
     this.col.copy(this.trailCol).lerp(this.smokeLight, this.rand() * 0.35);
+    const j = FX.trailJitter;
     this.smoke.spawn(
-      x,
-      y,
-      z,
+      x + (this.rand() - 0.5) * j,
+      y + (this.rand() - 0.5) * j,
+      z + (this.rand() - 0.5) * j,
       vx * 0.08 + (this.rand() - 0.5) * 0.6,
       vy * 0.08 + (this.rand() - 0.2) * 0.5,
       vz * 0.08 + (this.rand() - 0.5) * 0.6,
@@ -720,7 +744,7 @@ export class Fx {
       this.rand() * 6,
       (this.rand() - 0.5) * 1.5,
     );
-    this.fire.spawn(x, y, z, vx * 0.1, vy * 0.1, vz * 0.1, 0.1 + this.rand() * 0.05, 0.1, this.white, 0, 0);
+    this.fire.spawn(x, y, z, vx * 0.1, vy * 0.1, vz * 0.1, 0.06 + this.rand() * 0.04, 0.09, this.white, 0, 0);
   }
 
   /** Fuse spark at (x, y, z) (grenade). `intensity` 0..1 scales count/speed. */
@@ -746,10 +770,10 @@ export class Fx {
     }
   }
 
-  update(rawDt: number): void {
+  update(rawDt: number, camera: THREE.Vector3 | null = null): void {
     const dt = Math.min(Math.max(rawDt, 0), 0.1);
-    this.fire.update(dt, null);
-    this.smoke.update(dt, null);
+    this.fire.update(dt, null, camera);
+    this.smoke.update(dt, null, camera);
     this.debris.update(dt, this.groundAt);
     this.sparks.update(dt, null);
     for (let i = 0; i < this.rings.length; i++) {
@@ -806,6 +830,12 @@ export class Fx {
     for (const r of this.rings) r.mat.dispose();
     this.light?.dispose();
   }
+}
+
+/** sRGB hex → linear rgb triple (the working colour space of instance colours). */
+function lin(hex: number): Vec3 {
+  const c = new THREE.Color(hex);
+  return [c.r, c.g, c.b];
 }
 
 const smooth = (a: number, b: number, x: number): number => {

@@ -29,11 +29,18 @@ export const GAME_FX = {
   /** Focus blend (s) from the worm to its projectile, and back to the worm after the hold. */
   blendToProjectile: 0.25,
   blendToWorm: 0.9,
+  /**
+   * During the hold the focus sits this far (m) beyond the blast (horizontally, away from the camera) so the
+   * follow camera frames the blast from a distance instead of from inside the fireball.
+   */
+  holdPushBack: 3,
   /** Hit-stop: frames frozen when an explosion deals at least `hitStopDamage` to some worm (or kills). */
   hitStopFrames: 3,
   hitStopDamage: 25,
   /** Recent explosions kept for state()/tests. */
   explosionLog: 16,
+  /** Weapons that get a muzzle flash + smoke puff when fired (thrown weapons don't). */
+  muzzleFlash: new Set(['bazooka']),
 };
 
 type CamTrack = 'worm' | 'projectile' | 'hold';
@@ -71,6 +78,8 @@ export class Game {
    * advance()-driven tests keep exact tick counts (the sim never waits on wall time there).
    */
   hitStopEnabled: boolean;
+  /** Debug/tests: skip the loop's own renders so screenshots show exactly what renderFrame() drew last. */
+  renderFrozen = false;
   /** Recent explosions (newest last), for state() / tests. */
   readonly explosions: { tick: number; pos: Vec3; radius: number; kind: string; hits: number }[] = [];
   /** Worm controlled by the local player (turn system replaces this in M4). */
@@ -144,7 +153,9 @@ export class Game {
         if (this.hitStop > 0) return; // hit-stop: time stands still for a few frames
         if (this.ready && this.sim.canStep()) this.sim.step(this.queue.drain(this.sim.tick));
       },
-      render: (alpha, dt) => this.renderFrame(alpha, dt),
+      render: (alpha, dt) => {
+        if (!this.renderFrozen) this.renderFrame(alpha, dt);
+      },
     });
   }
 
@@ -334,10 +345,15 @@ export class Game {
   private onProjectileRemoved(id: number, reason: string, pos: Vec3): void {
     this.projectileView.removed(id, reason, pos);
     if (this.camTrack !== 'projectile' || id !== this.camProjectileId) return;
-    this.camHoldPos[0] = pos[0];
+    const cam = this.ctx.camera.position;
+    const dx = pos[0] - cam.x;
+    const dz = pos[2] - cam.z;
+    const len = Math.hypot(dx, dz);
+    const push = len > 1e-3 ? GAME_FX.holdPushBack / len : 0;
+    this.camHoldPos[0] = pos[0] + dx * push;
     this.camHoldPos[1] = pos[1];
-    this.camHoldPos[2] = pos[2];
-    this.setCamTrack('hold', 0.15);
+    this.camHoldPos[2] = pos[2] + dz * push;
+    this.setCamTrack('hold', 0.35);
     this.camHoldLeft =
       reason === 'exploded' || reason === 'water' ? GAME_FX.holdAfterImpact : GAME_FX.holdAfterOther;
   }
@@ -383,7 +399,9 @@ export class Game {
       ev.on('wormJumped', ({ id, kind }) => send({ type: 'jumped', id, kind })),
       ev.on('wormLanded', ({ id, drop }) => send({ type: 'landed', id, drop })),
       ev.on('wormDamaged', ({ id, amount }) => send({ type: 'damaged', id, amount })),
-      ev.on('weaponFired', ({ origin, dir }) => this.fx.muzzle(origin, dir)),
+      ev.on('weaponFired', ({ weapon, origin, dir }) => {
+        if (GAME_FX.muzzleFlash.has(weapon)) this.fx.muzzle(origin, dir);
+      }),
       ev.on('projectileSpawned', ({ id, ownerId }) => this.onProjectileSpawned(id, ownerId)),
       ev.on('projectileRemoved', ({ id, reason, pos }) => this.onProjectileRemoved(id, reason, pos)),
       ev.on('explosion', (e) => this.onExplosion(e)),
@@ -435,7 +453,7 @@ export class Game {
     this.wormView.sync(this.sim.worms, a, adt);
     this.projectileView.sync(this.sim.projectiles, a, adt);
     this.updateAimView(dt);
-    this.fx.update(adt);
+    this.fx.update(adt, camera.position);
     this.ctx.render();
   }
 
