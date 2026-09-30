@@ -45,9 +45,17 @@ async function main(): Promise<void> {
 function showControlsHint(ui: HTMLElement): void {
   const el = document.createElement('div');
   el.id = 'controls-hint';
-  el.innerHTML =
-    '<b>WASD</b> gå · <b>Space</b> hop (2× = backflip) · <b>Mus</b> kig (klik for at låse) · ' +
-    '<b>Højreklik</b> sigt · <b>Q</b> våben · <b>Tab</b> oversigt · <b>N</b> næste orm';
+  const hints: [string, string][] = [
+    ['WASD', 'gå'],
+    ['Space', 'hop (2× = backflip)'],
+    ['Mus', 'kig (klik for at låse)'],
+    ['Højreklik', 'sigt'],
+    ['Q', 'våben'],
+    ['Tab', 'oversigt'],
+    ['N', 'næste orm'],
+  ];
+  // Each key + label pair is one non-breaking unit so the hint wraps between pairs only.
+  el.innerHTML = hints.map(([k, t]) => `<span><b>${k}</b> ${t}</span>`).join(' · ');
   ui.appendChild(el);
 }
 
