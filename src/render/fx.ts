@@ -83,8 +83,9 @@ export const FX = {
   lightDistance: 5,
   lightLife: 0.35,
 
-  /** Fire/smoke surfaces stay at least this far (m) from the camera (they shrink instead). */
-  cameraClearance: 1.2,
+  /** Fire / smoke surfaces stay at least this far (m) from the camera (they shrink instead). */
+  fireClearance: 1.2,
+  smokeClearance: 2.5,
 
   /** Rocket smoke trail: spacing (m), puff size (m), life (s). */
   trailSpacing: 0.2,
@@ -271,13 +272,14 @@ class ParticlePool {
   }
 
   /**
-   * `cam` (optional): particles never reach closer than FX.cameraClearance to it – they shrink instead, so a
-   * camera parked next to a blast is never swallowed by a screen-filling fireball.
+   * `cam` (optional): particle surfaces never reach closer than `clearance` (m) to it – they shrink instead, so
+   * a camera parked next to a blast (or chasing a rocket through its trail) is never swallowed by a blob.
    */
   update(
     dt: number,
     groundAt: ((x: number, z: number) => number) | null,
     cam: THREE.Vector3 | null = null,
+    clearance = 0,
   ): void {
     const cfg = this.cfg;
     const drag = cfg.drag > 0 ? Math.exp(-cfg.drag * dt) : 1;
@@ -340,7 +342,7 @@ class ParticlePool {
           break;
       }
       if (cam) {
-        const dc = Math.hypot(x - cam.x, y - cam.y, z - cam.z) - FX.cameraClearance;
+        const dc = Math.hypot(x - cam.x, y - cam.y, z - cam.z) - clearance;
         if (s > dc) s = dc;
       }
       if (s <= 1e-4) continue;
@@ -772,8 +774,8 @@ export class Fx {
 
   update(rawDt: number, camera: THREE.Vector3 | null = null): void {
     const dt = Math.min(Math.max(rawDt, 0), 0.1);
-    this.fire.update(dt, null, camera);
-    this.smoke.update(dt, null, camera);
+    this.fire.update(dt, null, camera, FX.fireClearance);
+    this.smoke.update(dt, null, camera, FX.smokeClearance);
     this.debris.update(dt, this.groundAt);
     this.sparks.update(dt, null);
     for (let i = 0; i < this.rings.length; i++) {

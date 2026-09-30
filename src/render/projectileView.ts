@@ -184,7 +184,7 @@ export class ProjectileView {
     body.castShadow = true;
     const outline = new THREE.Mesh(this.geo[kind], this.outlineMat);
     if (kind === 'rocket') outline.scale.set(1.32, 1.32, 1.08);
-    else outline.scale.setScalar(1.14);
+    else outline.scale.setScalar(1.1);
     root.add(body, outline);
     let flame: THREE.Mesh | null = null;
     if (kind === 'rocket') {
