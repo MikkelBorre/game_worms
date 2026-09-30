@@ -11,7 +11,8 @@ import type { HeightmapData } from '../terrain/types';
 import { createHud, type Hud, type HudMapWorm, type HudModel, type HudTeam, type HudWorm } from './hud';
 import { teamName, wormName } from './names';
 import { projectNameTags, type NameTagSource } from './nameTags';
-import { weaponDisplayName } from './weapons';
+import { getWeapon } from '../sim/weapons/registry';
+import { DEFAULT_WEAPON_MENU, weaponDisplayName } from './weapons';
 
 export interface GameHud {
   readonly hud: Hud;
@@ -35,12 +36,16 @@ export interface AttachHudOptions {
 }
 
 export function attachHud(game: Game, root: HTMLElement, opts: AttachHudOptions = {}): GameHud {
-  // View-only weapon choice until the sim has a weapon registry / selectWeapon command.
-  let weaponId = 'bazooka';
+  // The HUD's weapon menu owns Q; the selection drives the fire input (game.selectedWeapon).
+  game.fireInput.cycleOnKey = false;
+  const menu = DEFAULT_WEAPON_MENU.map((it) => ({ ...it, available: getWeapon(it.id) !== undefined }));
+  let weaponId = game.selectedWeapon;
+  let weaponAmmo = -1;
   const hud = createHud(root, {
     teamColor,
+    weapons: menu,
     onSelectWeapon: (id) => {
-      weaponId = id;
+      if (getWeapon(id)) game.selectedWeapon = id;
     },
     canToggleMenu: () => game.cameraRig.mode !== 'free',
   });
@@ -156,8 +161,14 @@ export function attachHud(game: Game, root: HTMLElement, opts: AttachHudOptions 
     const cam = game.ctx.camera;
     model.cameraXZ![0] = cam.position.x;
     model.cameraXZ![1] = cam.position.z;
-    if (model.weapon!.id !== weaponId) {
-      model.weapon = { id: weaponId, name: weaponDisplayName(weaponId), ammo: -1, maxAmmo: -1 };
+    const active = game.sim.worms.find((w) => w.id === game.activeWormId);
+    const selected = game.selectedWeapon;
+    const ammo = active ? (game.sim.getAmmo(active.team, selected) ?? -1) : -1;
+    if (selected !== weaponId || ammo !== weaponAmmo) {
+      weaponId = selected;
+      weaponAmmo = ammo;
+      const max = getWeapon(selected)?.ammo ?? -1;
+      model.weapon = { id: weaponId, name: weaponDisplayName(weaponId), ammo, maxAmmo: max };
     }
     if (opts.demo) {
       const t = frame / 60; // rendered frames, so screenshots are reproducible
