@@ -29,7 +29,16 @@ export type Command =
    */
   | { type: 'jump'; wormId: number; kind?: JumpKind }
   /** Set facing yaw (radians). yaw 0 faces +Z; forward = [sin(yaw), 0, cos(yaw)]. */
-  | { type: 'face'; wormId: number; yaw: number };
+  | { type: 'face'; wormId: number; yaw: number }
+  /**
+   * Start the hotseat match (M4) with the worms spawned so far (send after the spawnWorm commands): teams =
+   * distinct teams of living worms, turn order ascending from `firstTeam` (default: lowest team id).
+   * Overrides: turn length (default TURN_SECONDS) and retreat time (default RETREAT_SECONDS), in seconds.
+   * From then on only the active worm accepts move/jump/face/fire.
+   */
+  | { type: 'startMatch'; turnSeconds?: number; retreatSeconds?: number; firstTeam?: number }
+  /** End the current turn early (skip the rest of the move or retreat phase → settle). */
+  | { type: 'endTurn' };
 
 export type JumpKind = 'forward' | 'backflip';
 

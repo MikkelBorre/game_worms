@@ -24,6 +24,10 @@ export class Harness {
       'explosion',
       'windChanged',
       'terrainEditFailed',
+      'turnStarted',
+      'turnPhase',
+      'turnEnded',
+      'gameOver',
     ];
     for (const type of types)
       this.sim.events.on(type, (payload) => this.log.push({ tick: this.sim.tick, type, payload }));
