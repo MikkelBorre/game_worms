@@ -145,20 +145,20 @@ export const PALETTE = {
   sand: hex(0xe8d28a),
   sandAlt: hex(0xf0dc9c),
   seabed: hex(0xb89e62),
-  grass: hex(0x5dbb4a),
-  grassAlt: hex(0x7ccc4f),
-  grassDark: hex(0x4a9e3c),
-  rock: hex(0x8a8580),
-  rockAlt: hex(0x9d968c),
-  dirt: hex(0x6b4a2b),
+  grass: hex(0x62bf45),
+  grassAlt: hex(0x9ad155),
+  grassDark: hex(0x479a3a),
+  rock: hex(0x9e968a),
+  rockAlt: hex(0xb1a896),
+  dirt: hex(0x8a6238),
   /** Surfaces this far (m) below the column's top surface count as covered (cave floors, under overhangs). */
   coveredDepth: 1.2,
   /** Sand up to this height above water (m), jittered by noise. */
   beachTop: 1.4,
   /** Rock above this height (m). */
   rockLine: 28,
-  /** Normal.y where rock starts / is full (0.74 ≈ 42°, 0.58 ≈ 55° slope). */
-  rockSlope: [0.74, 0.58],
+  /** Normal.y where rock starts / is full (0.68 ≈ 47°, 0.6 ≈ 53° slope). */
+  rockSlope: [0.68, 0.6],
 } as const;
 
 /** Cheap deterministic lattice hash in [0,1). */

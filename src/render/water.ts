@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { HeightmapData } from '../terrain/types';
 import { WATER_LEVEL } from '../terrain/types';
-import { SUN_DIRECTION, WATER, SKY, LIGHT } from './palette';
+import { GLINT, HAZE, LIGHT, SKY, SUN_DIRECTION, WATER } from './palette';
 
 export interface Water {
   object: THREE.Object3D;
@@ -97,6 +97,9 @@ uniform vec3 uSunColor;
 uniform vec2 uDepths;   // midDepth, deepDepth
 uniform vec3 uFoamParams; // width, stripe spacing, speed
 uniform vec2 uShade;    // specular, fresnel
+uniform vec3 uHaze;
+uniform vec2 uHazeParams; // strength, exponent
+uniform vec3 uGlint;    // path strength, path tightness, sparkle strength
 
 varying vec3 vWorldPos;
 varying vec2 vTerrain;
@@ -162,13 +165,27 @@ void main() {
   // Fresnel from a flattened normal: full-strength normals make grazing angles streaky.
   vec3 Nf = normalize(mix(vec3(0.0, 1.0, 0.0), N, 0.35));
   float fres = pow(1.0 - clamp(dot(Nf, V), 0.0, 1.0), 5.0);
-  col = mix(col, uSky, fres * uShade.y);
-  // Broad sun path from the flattened normal (no streaks) + small crisp sparkles from the ripple normal
-  // (ripples fade with distance, so sparkles only appear up close).
-  float rsSoft = max(dot(reflect(-V, Nf), uSunDir), 0.0);
+  vec3 Rf = reflect(-V, Nf);
+  // Reflected sky: the horizon colour, warmed by the same directional haze as the fog/sky dome.
+  vec3 skyRefl = mix(uSky, uHaze, uHazeParams.x * pow(max(dot(Rf, uSunDir), 0.0), uHazeParams.y));
+  col = mix(col, skyRefl, fres * uShade.y);
+  // Sun path: anisotropic lobe (narrow in azimuth, long in elevation) so the glitter stretches from the
+  // sun towards the viewer like a real low-sun path, broken up into moving sparkle streaks.
+  vec2 rh = normalize(Rf.xz + vec2(1e-5));
+  vec2 sh = normalize(uSunDir.xz + vec2(1e-5));
+  float da = 1.0 - dot(rh, sh);
+  float de = Rf.y - uSunDir.y;
+  float path = exp(-da * 60.0 * uGlint.y - de * de * 3.0 * uGlint.y);
+  float sp = vnoise(vWorldPos.xz * vec2(0.55, 1.6) + vec2(uTime * 0.6, -uTime * 0.9));
+  sp = smoothstep(0.45, 0.8, sp * 0.7 + vnoise(vWorldPos.xz * 1.9 - uTime * 0.7) * 0.5);
+  // Small crisp sparkles from the ripple normal up close (ripples fade with distance).
   float rsCrisp = max(dot(reflect(-V, N), uSunDir), 0.0);
-  float glint = smoothstep(0.6, 0.66, pow(rsCrisp, 1400.0)) * 0.75 * (1.0 - smoothstep(25.0, 80.0, viewDist)) + pow(rsSoft, 24.0) * 0.22;
+  float glint = smoothstep(0.6, 0.66, pow(rsCrisp, 1400.0)) * 0.75 * (1.0 - smoothstep(25.0, 80.0, viewDist));
   col += uSunColor * glint * uShade.x * shadow;
+  // The broad path is blended (not added) towards a hot golden sun colour so it stays warm instead of
+  // turning pink-white where orange light is added onto blue water.
+  float pathW = clamp(path * uGlint.x * (0.35 + uGlint.z * sp), 0.0, 1.0) * shadow;
+  col = mix(col, uHaze * (0.85 + 0.7 * sp), pathW);
 
   // --- Shoreline foam ------------------------------------------------------
   float n1 = vnoise(vWorldPos.xz * 0.35 + vec2(uTime * 0.11, -uTime * 0.07));
@@ -224,6 +241,9 @@ export function createWater(): Water {
     uDepths: { value: new THREE.Vector2(WATER.midDepth, WATER.deepDepth) },
     uFoamParams: { value: new THREE.Vector3(WATER.foamWidth, WATER.foamStripeSpacing, WATER.foamSpeed) },
     uShade: { value: new THREE.Vector2(WATER.specular, WATER.fresnel) },
+    uHaze: { value: new THREE.Color(HAZE.color) },
+    uHazeParams: { value: new THREE.Vector2(HAZE.strength, HAZE.exponent) },
+    uGlint: { value: new THREE.Vector3(GLINT.path, GLINT.pathPower, GLINT.sparkle) },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,

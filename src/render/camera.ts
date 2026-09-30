@@ -45,8 +45,8 @@ export interface CameraRig {
 export const CAMERA = {
   /** Overview orbit: centre, horizontal radius, height above centre, angular speed (rad/s). */
   orbitCenter: [0, 6, 0] as Vec3,
-  orbitRadius: 132,
-  orbitHeight: 78,
+  orbitRadius: 140,
+  orbitHeight: 58,
   orbitSpeed: 0.045,
   /** Exponential damping rates (1/s) for position / rotation when blending into overview. */
   blendPos: 2.2,

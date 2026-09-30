@@ -9,6 +9,7 @@ import { createTerrain, type TerrainSystem } from './terrain';
 import { createCameraRig, type CameraRig } from './render/camera';
 import { createTerrainMaterial } from './render/materials';
 import { createRenderContext, type RenderContext } from './render/scene';
+import { createScatter } from './render/scatter';
 import { createSky, type Sky } from './render/sky';
 import { createTerrainView, type TerrainView } from './render/terrainView';
 import { createWater, type Water } from './render/water';
@@ -35,6 +36,8 @@ export class Game {
   readonly water: Water;
   readonly terrainView: TerrainView;
   readonly wormView = new WormView();
+  /** Instanced grass/flowers/rocks/palms (visual only). */
+  readonly scatter = createScatter();
   readonly cameraRig: CameraRig;
   readonly controls: Controls;
   /** Worm controlled by the local player (turn system replaces this in M4). */
@@ -57,6 +60,7 @@ export class Game {
     this.terrainView = createTerrainView(createTerrainMaterial());
     this.ctx.scene.add(this.terrainView.group);
     this.ctx.scene.add(this.wormView.group);
+    this.ctx.scene.add(this.scatter.object);
     this.cameraRig = createCameraRig(this.ctx.camera, canvas, {
       raycast: (o, d, max) => this.raycast(o, d, max),
     });
@@ -104,6 +108,8 @@ export class Game {
     this.unsubMesh = this.terrain.onChunkMesh((m) => this.terrainView.apply(m));
     await this.terrain.generate();
     this.water.setHeightmap(this.terrain.heightmap(256));
+    const village = this.terrain.info()?.village;
+    this.scatter.setHeightmap(this.terrain.heightmap(256), seed, { avoid: village ? [village] : [] });
     if (this.opts.teams > 0) this.spawnTeams(this.opts.teams, this.opts.wormsPerTeam);
     this.ready = true;
   }
@@ -200,7 +206,10 @@ export class Game {
     this.cameraRig.update(dt);
     this.sky.update(this.ctx.camera, this.renderTime);
     this.water.update(this.renderTime, this.ctx.camera);
-    this.wormView.sync(this.sim.worms, alpha, dt);
+    this.scatter.update(this.renderTime);
+    this.wormView.sync(this.sim.worms, alpha, dt, {
+      aimingId: this.cameraRig.mode === 'aim' ? this.activeWormId : null,
+    });
     this.ctx.render();
   }
 
