@@ -18,6 +18,12 @@ export class Harness {
       'wormDamaged',
       'wormDied',
       'commandIgnored',
+      'weaponFired',
+      'projectileSpawned',
+      'projectileRemoved',
+      'explosion',
+      'windChanged',
+      'terrainEditFailed',
     ];
     for (const type of types)
       this.sim.events.on(type, (payload) => this.log.push({ tick: this.sim.tick, type, payload }));

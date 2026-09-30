@@ -76,8 +76,10 @@ export class Game {
     });
     this.loop = new GameLoop({
       // No ticks while a world is (re)loading: every world starts at tick 0 regardless of load time.
+      // Nor while an explosion crater is still being rebuilt (workers): the sim waits, so worker timing can
+      // never change the outcome (determinism).
       step: () => {
-        if (this.ready) this.sim.step(this.queue.drain(this.sim.tick));
+        if (this.ready && this.sim.canStep()) this.sim.step(this.queue.drain(this.sim.tick));
       },
       render: (alpha, dt) => this.renderFrame(alpha, dt),
     });
@@ -109,6 +111,8 @@ export class Game {
     this.wireSimEvents();
     this.terrain = createTerrain({ seed, sim: this.sim });
     this.unsubMesh = this.terrain.onChunkMesh((m) => this.terrainView.apply(m));
+    const terrain = this.terrain;
+    this.sim.setTerrainEditor({ carveSphere: (c, r) => terrain.carveSphere(c, r) });
     await this.terrain.generate();
     const heightmap = this.terrain.heightmap(256);
     this.water.setHeightmap(heightmap);
