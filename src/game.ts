@@ -215,6 +215,14 @@ export class Game {
     this.queue.push(cmd, this.sim.tick);
   }
 
+  /**
+   * Start the hotseat match with the worms spawned so far (queued after their spawn commands). From then on the
+   * sim's turn system picks the active worm (see sim.turn) and game.activeWormId follows it.
+   */
+  startMatch(opts: { turnSeconds?: number; retreatSeconds?: number; firstTeam?: number } = {}): void {
+    this.command({ type: 'startMatch', ...opts });
+  }
+
   /** Selected weapon id (read by the HUD weapon card; Q cycles it for now). */
   get selectedWeapon(): string {
     return this.fireInput.weapon;
@@ -240,6 +248,8 @@ export class Game {
     if (id === null || !this.ready) return false;
     const w = this.sim.worms.find((x) => x.id === id);
     if (!w || !w.alive) return false;
+    const turn = this.sim.turn;
+    if (turn.enabled) return turn.phase === 'move' && turn.wormId === id && turn.shotsLeft > 0;
     for (const p of this.sim.projectiles) if (p.ownerId === id) return false;
     return true;
   }
@@ -276,6 +286,7 @@ export class Game {
   }
 
   selectNextWorm(): void {
+    if (this.sim.turn.enabled) return; // the turn system picks the worm
     const alive = this.sim.worms.filter((w) => w.alive);
     if (alive.length === 0) return this.setActiveWorm(null);
     const i = alive.findIndex((w) => w.id === this.activeWormId);
@@ -439,6 +450,9 @@ export class Game {
       ev.on('projectileSpawned', ({ id, ownerId }) => this.onProjectileSpawned(id, ownerId)),
       ev.on('projectileRemoved', ({ id, reason, pos }) => this.onProjectileRemoved(id, reason, pos)),
       ev.on('explosion', (e) => this.onExplosion(e)),
+      // Turn system: control (and the follow camera) goes to the new turn's worm. setActiveWorm hard-cuts behind
+      // it when following; after a projectile hold the camera blends over by itself.
+      ev.on('turnStarted', ({ wormId }) => this.setActiveWorm(wormId)),
       ev.on('wormDied', ({ id, cause, pos }) => {
         send({ type: 'died', id, cause, pos });
         if (id === this.activeWormId) this.selectNextWorm();

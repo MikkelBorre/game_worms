@@ -14,6 +14,10 @@ export interface GameTestApi {
    * for timer weapons. Queued for the next tick. Throws if there is no active worm.
    */
   fire(weapon: string, dir: Vec3, power: number, timer?: number): void;
+  /** Queue `startMatch` (after the spawns): turn system on, control follows state().turn.wormId. */
+  startMatch(opts?: { turnSeconds?: number; retreatSeconds?: number; firstTeam?: number }): void;
+  /** Queue `endTurn`: skip the rest of the move/retreat phase. */
+  endTurn(): void;
   /** Queue a `setWind` command: wind acceleration [x, z] (m/s²). */
   setWind(wind: Vec2): void;
   /** Queue any serializable Command (move/jump/face/…) for the next tick. */
@@ -72,6 +76,8 @@ export function installTestApi(game: Game): GameTestApi {
       if (wormId === null) throw new Error('fire: no active worm');
       game.command({ type: 'fire', wormId, weapon, dir, power, ...(timer === undefined ? {} : { timer }) });
     },
+    startMatch: (opts) => game.startMatch(opts),
+    endTurn: () => game.command({ type: 'endTurn' }),
     setWind: (wind) => game.command({ type: 'setWind', wind }),
     command: (cmd) => game.command(cmd),
     hash: () => game.sim.hash(),
