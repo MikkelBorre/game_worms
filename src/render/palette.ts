@@ -177,16 +177,23 @@ export const teamColor = (team: number): number =>
 
 /** Procedural worm look (wormModel.ts). */
 export const WORM_COLORS = {
-  skin: 0xff7d9c,
+  /** Peach-pink skin. */
+  skin: 0xffa184,
   /** Lighter front/belly. */
-  belly: 0xffb0c0,
-  /** Darker ring bands on the lower body (segments). */
-  segment: 0xd9587a,
+  belly: 0xffcbb0,
+  /** Darker ring creases on the lower body and tail (segments). */
+  segment: 0xe07a62,
   eyeWhite: 0xffffff,
   pupil: 0x141018,
-  mouth: 0x7a1f35,
-  /** Helmet brim/rim = team colour multiplied by this. */
-  helmetRimShade: 0.72,
+  mouth: 0x6e2230,
+  brow: 0x4a2a1c,
+  /** Army helmet shell (olive) and its darker brim. */
+  helmet: 0x6c7a3c,
+  helmetDark: 0x515e2b,
+  goggleRim: 0x5c3f28,
+  goggleLens: 0xbfe9f7,
+  /** Team strap is the team colour multiplied by this (1 = pure team colour). */
+  teamStrapShade: 1.0,
   /** Cartoon outline (inverted hull). */
   outline: 0x2a1420,
 } as const;

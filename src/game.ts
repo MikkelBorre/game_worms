@@ -198,7 +198,9 @@ export class Game {
     this.cameraRig.update(dt);
     this.sky.update(this.ctx.camera, this.renderTime);
     this.water.update(this.renderTime, this.ctx.camera);
-    this.wormView.sync(this.sim.worms, alpha, dt);
+    this.wormView.sync(this.sim.worms, alpha, dt, {
+      aimingId: this.cameraRig.mode === 'aim' ? this.activeWormId : null,
+    });
     this.ctx.render();
   }
 
